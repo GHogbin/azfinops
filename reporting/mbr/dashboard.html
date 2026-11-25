@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>Azure MBR | Local reporting dashboard</title>
+  <script>
+    (() => {
+      const param = new URLSearchParams(window.location.search).get("scoutTheme");
+      const theme =
+        param || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      document.documentElement.setAttribute("data-theme", theme);
+    })();
+  </script>
+  <style>
+    :root {
+      color-scheme: light;
+      --cp-bg: #f7f4ef;
+      --cp-bg-elevated: #fcfbf8;
+      --cp-surface: #ffffff;
+      --cp-surface-soft: #f5f5f5;
+      --cp-border: #dedede;
+      --cp-border-strong: #919191;
+      --cp-text: #242424;
+      --cp-text-muted: #5c5c5c;
+      --cp-text-soft: #6f6f6f;
+      --cp-accent: #b11f4b;
+      --cp-accent-hover: #9a1a41;
+      --cp-accent-soft: rgba(177, 31, 75, 0.08);
+      --cp-accent-fg: #ffffff;
+      --cp-success: #16a34a;
+      --cp-danger: #dc2626;
+      --cp-warning: #f59e0b;
+      --cp-link: #0078d4;
+      --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.12);
+      --cp-overlay: rgba(255, 255, 255, 0.8);
+      --cp-panel: rgba(255, 255, 255, 0.86);
+      --cp-panel-strong: rgba(255, 255, 255, 0.96);
+      --cp-sheen: rgba(255, 255, 255, 0.55);
+      --cp-highlight: rgba(177, 31, 75, 0.12);
+    }
+    html[data-theme="dark"] {
+      color-scheme: dark;
+      --cp-bg: #3d3b3a;
+      --cp-bg-elevated: #343231;
+      --cp-surface: #292929;
+      --cp-surface-soft: #2e2e2e;
+      --cp-border: #474747;
+      --cp-border-strong: #5f5f5f;
+      --cp-text: #dedede;
+      --cp-text-muted: #919191;
+      --cp-text-soft: #b0b0b0;
+      --cp-accent: #fd8ea1;
+      --cp-accent-hover: #fb7b91;
+      --cp-accent-soft: rgba(253, 142, 161, 0.14);
+      --cp-accent-fg: #1a1a1a;
+      --cp-success: #4ade80;
+      --cp-danger: #f87171;
+      --cp-warning: #fbbf24;
+      --cp-link: #4da6ff;
+      --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
+      --cp-overlay: rgba(41, 41, 41, 0.88);
+      --cp-panel: rgba(41, 41, 41, 0.72);
+      --cp-panel-strong: rgba(41, 41, 41, 0.96);
+      --cp-sheen: rgba(255, 255, 255, 0.04);
+      --cp-highlight: rgba(253, 142, 161, 0.12);
+    }
+    :root {
+      --cp-enrollment-1: var(--cp-danger);
+      --cp-enrollment-2: var(--cp-link);
+    }
+    :root, html[data-theme="dark"] {
+      --cp-accent: var(--cp-text);
+      --cp-accent-hover: var(--cp-text-muted);
+      --cp-accent-soft: var(--cp-surface-soft);
+      --cp-accent-fg: var(--cp-surface);
+      --cp-highlight: var(--cp-surface-soft);
+    }
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    body { margin: 0; background: var(--cp-bg); color: var(--cp-text); font: 14px/1.5 "Segoe UI", Aptos, Calibri, -apple-system, BlinkMacSystemFont, sans-serif; }
+    button, input, select, textarea { font: inherit; }
+    button, select { cursor: pointer; }
+    button { border: 1px solid var(--cp-border); border-radius: 0.625rem; padding: 8px 12px; background: var(--cp-surface); color: var(--cp-text); font-weight: 600; }
+    button:hover { border-color: var(--cp-border-strong); background: var(--cp-surface-soft); }
+    button:disabled { cursor: not-allowed; opacity: .5; }
+    button.primary { background: var(--cp-accent); border-color: var(--cp-accent); color: var(--cp-accent-fg); }
+    button.primary:hover { background: var(--cp-accent-hover); }
+    :focus-visible { outline: 2px solid var(--cp-accent); outline-offset: 3px; }
+    input, select, textarea { width: 100%; padding: 8px 10px; background: var(--cp-surface); color: var(--cp-text); border: 1px solid var(--cp-border); border-radius: 0.625rem; }
+    textarea { min-height: 100px; resize: vertical; }
+    a { color: var(--cp-link); }
+    h1, h2, h3, p { margin: 0; }
+    h1 { font-size: 30px; line-height: 1.2; letter-spacing: -.5px; font-weight: 650; }
+    h2 { font-size: 17px; font-weight: 650; }
+    h3 { font-size: 14px; font-weight: 650; }
+    .eyebrow { color: var(--cp-accent); text-transform: uppercase; letter-spacing: 1.5px; font-size: 11px; font-weight: 700; }
+    .muted, .note { color: var(--cp-text-muted); }
+    .note { font-size: 12px; line-height: 1.6; }
+    .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .mono { font-family: Consolas, "Courier New", Courier, monospace; overflow-wrap: anywhere; }
+    .topbar { background: var(--cp-surface); border-bottom: 1px solid var(--cp-border); padding: 16px 28px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .brandmark { background: var(--cp-accent); color: var(--cp-accent-fg); border-radius: 0.625rem; width: 40px; height: 40px; display: grid; place-items: center; font-weight: 750; font-size: 12px; letter-spacing: .5px; }
+    .brand strong { font-size: 16px; }
+    .brand small { display: block; color: var(--cp-text-muted); font-size: 12px; }
+    .actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .appearance-control { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--cp-text-muted); }
+    .appearance-control select { width: auto; max-width: 190px; font-size: 12px; }
+    .app { display: grid; grid-template-columns: 248px minmax(0, 1fr); min-height: calc(100vh - 74px); max-width: 1800px; margin: auto; }
+    .sidebar { padding: 28px 20px; border-right: 1px solid var(--cp-border); }
+    .nav { display: grid; gap: 4px; margin: 12px 0 28px; }
+    .enrollment-links { display: grid; gap: 4px; }
+    .nav button { text-align: left; border-color: var(--cp-bg); background: var(--cp-bg); font-size: 13px; padding: 12px; }
+    .nav button[aria-pressed="true"] { background: var(--cp-accent-soft); color: var(--cp-accent); border-color: var(--cp-border-strong); }
+    .filter-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+    .link-button { border: 0; color: var(--cp-accent); background: var(--cp-bg); padding: 4px; font-size: 12px; }
+    .field { display: block; margin-bottom: 12px; font-size: 12px; font-weight: 600; color: var(--cp-text-muted); }
+    .field input, .field select { display: block; margin-top: 4px; font-size: 13px; font-weight: 400; }
+    .sidebar-foot { border-top: 1px solid var(--cp-border); margin-top: 24px; padding-top: 16px; }
+    main { min-width: 0; padding: 28px 32px 48px; }
+    .page-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 24px; }
+    .page-heading h1 { margin: 8px 0; }
+    .pill { display: inline-flex; gap: 6px; align-items: center; border: 1px solid var(--cp-border); background: var(--cp-surface); border-radius: 24px; padding: 6px 12px; font-size: 12px; white-space: nowrap; }
+    .status-dot { height: 6px; width: 6px; border-radius: 50%; background: var(--cp-accent); }
+    .banner { border: 1px solid var(--cp-border); border-left: 3px solid var(--cp-warning); background: var(--cp-surface); border-radius: 0.625rem; padding: 12px 16px; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .banner strong { display: block; font-size: 13px; }
+    .banner p { color: var(--cp-text-muted); font-size: 12px; }
+    .banner.error { border-left-color: var(--cp-danger); }
+    .scope { margin-bottom: 20px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .scope-label { color: var(--cp-text-muted); font-size: 12px; }
+    .scope-chip { border-radius: 0.625rem; background: var(--cp-accent-soft); color: var(--cp-accent); padding: 4px 8px; font-size: 12px; }
+    .kpis { display: grid; grid-template-columns: 1.35fr 1fr 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+    .card { background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 16px; padding: 20px; box-shadow: 0 1px 2px var(--cp-border); min-width: 0; }
+    .kpi { padding: 20px; min-height: 156px; display: flex; flex-direction: column; justify-content: space-between; }
+    .kpi.hero { border-top: 3px solid var(--cp-accent); padding-top: 18px; }
+    .kpi-label { font-size: 12px; color: var(--cp-text-muted); display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .info { border: 1px solid var(--cp-border-strong); border-radius: 50%; display: inline-grid; place-items: center; height: 15px; width: 15px; font-size: 10px; color: var(--cp-text-muted); cursor: help; flex-shrink: 0; }
+    .kpi-value { font-size: clamp(24px, 2.4vw, 36px); font-weight: 650; letter-spacing: -1px; line-height: 1.25; margin: 12px 0 8px; font-variant-numeric: tabular-nums; }
+    .kpi.hero .kpi-value { font-size: clamp(30px, 3vw, 44px); }
+    .grid-main { display: grid; grid-template-columns: 1.45fr 1fr; gap: 20px; margin-bottom: 20px; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
+    .card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+    .card-heading p { margin-top: 4px; }
+    .chart-table { border-collapse: collapse; width: 100%; font-size: 12px; }
+    .chart-table td { padding: 10px 0; vertical-align: middle; }
+    .chart-table td:first-child { width: 53%; padding-right: 16px; overflow-wrap: anywhere; }
+    .chart-table td:last-child { padding-left: 12px; color: var(--cp-text-muted); }
+    .bar-label { background: var(--cp-surface); border: 0; border-radius: 4px; padding: 0; text-align: left; font-weight: 400; font-size: 12px; color: var(--cp-text); }
+    .bar-label:hover { color: var(--cp-accent); background: var(--cp-surface); border: 0; }
+    .track { height: 5px; background: var(--cp-surface-soft); margin-top: 6px; border-radius: 4px; overflow: hidden; }
+    .bar { height: 100%; background: var(--cp-chart-color, var(--cp-accent)); border-radius: 4px; }
+    .bar.negative { background: var(--cp-chart-color, var(--cp-danger)); }
+    .table-wrap { width: 100%; overflow-x: auto; }
+    .data-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .data-table th { color: var(--cp-text-muted); font-weight: 600; border-bottom: 1px solid var(--cp-border); padding: 12px; text-align: left; background: var(--cp-surface-soft); }
+    .data-table td { border-bottom: 1px solid var(--cp-border); padding: 12px; vertical-align: top; overflow-wrap: anywhere; }
+    .data-table th.num { text-align: right; }
+    .data-table td:first-child { min-width: 180px; }
+    .data-table tbody tr:last-child td { border-bottom: 0; }
+    .table-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .table-tools select { width: auto; max-width: 200px; font-size: 12px; }
+    .pager { display: flex; justify-content: space-between; align-items: center; gap: 12px; border-top: 1px solid var(--cp-border); margin-top: 12px; padding-top: 12px; }
+    .pager button { padding: 4px 12px; }
+    .pager .actions { flex-wrap: nowrap; }
+    .empty { color: var(--cp-text-muted); padding: 28px 4px; text-align: center; }
+    .stack { display: grid; gap: 12px; }
+    .explanation { border-left: 2px solid var(--cp-border); padding-left: 12px; }
+    .explanation strong { font-size: 12px; }
+    .explanation p { margin-top: 4px; }
+    .quality-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 16px; }
+    .quality-list li { border-left: 3px solid var(--cp-warning); padding-left: 12px; }
+    .quality-list p { margin-top: 4px; }
+    .source-grid { display: grid; grid-template-columns: 150px minmax(0, 1fr); font-size: 12px; gap: 12px; margin-top: 16px; }
+    .source-grid dt { color: var(--cp-text-muted); }
+    .source-grid dd { margin: 0; overflow-wrap: anywhere; }
+    .report-footer { margin-top: 20px; }
+    .report-footer .field { margin-top: 16px; }
+    .report-footnote { margin-top: 20px; font-size: 11px; color: var(--cp-text-muted); }
+    .notes-print { display: none; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .advisor-description { min-width: 260px; max-width: 360px; }
+    .advisor-subscription { min-width: 190px; max-width: 280px; }
+    .advisor-subscription small { display: block; color: var(--cp-text-muted); margin-top: 4px; }
+    .unavailable { color: var(--cp-text-muted); font-style: italic; }
+    .line-chart { width: 100%; height: auto; display: block; min-height: 180px; }
+    .chart-legend { display: flex; flex-wrap: wrap; gap: 16px; margin: 12px 0; font-size: 12px; }
+    .chart-key { display: inline-block; width: 20px; border-top: 3px solid var(--cp-accent); margin-right: 6px; vertical-align: middle; }
+    .chart-key.secondary { border-color: var(--cp-text-muted); border-top-style: dashed; }
+    .scope-options > summary { display: none; }
+    .assumptions { display: grid; grid-template-columns: repeat(auto-fit,minmax(230px,1fr)); gap: 16px; margin: 16px 0; }
+    .assumptions fieldset { border: 1px solid var(--cp-border); border-radius: 0.625rem; padding: 16px; min-width: 0; }
+    .assumptions legend { padding: 0 4px; font-weight: 600; }
+    .estimate-note { color: var(--cp-text-muted); font-size: 11px; display: block; margin-top: 4px; }
+    .progress { height: 8px; border-radius: 4px; background: var(--cp-surface-soft); overflow: hidden; margin: 8px 0; }
+    .progress > span { display: block; height: 100%; background: var(--cp-accent); }
+    .source-list { display: grid; gap: 12px; margin-top: 16px; }
+    .source-list article { border-left: 2px solid var(--cp-accent); padding-left: 12px; }
+    .workbook-pair { display: grid; grid-template-columns: minmax(340px,1fr) minmax(0,1.6fr); gap: 20px; margin-bottom: 20px; align-items: start; }
+    .pivot-scroll { max-height: 420px; overflow: auto; }
+    .pivot-table th, .pivot-table td { padding: 8px; }
+    .pivot-table td:first-child { min-width: 128px; }
+    .pivot-table thead th { position: sticky; top: 0; z-index: 1; }
+    .pivot-table tfoot th { background: var(--cp-accent-soft); color: var(--cp-text); }
+    .column-chart { width: 100%; height: auto; min-width: 560px; display: block; }
+    .chart-scroll { overflow-x: auto; }
+    .chart-data { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 10px; }
+    .chart-data th, .chart-data td { border: 1px solid var(--cp-border); padding: 6px 4px; text-align: center; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+    .chart-data th { color: var(--cp-text-muted); background: var(--cp-surface-soft); font-weight: 600; }
+    .chart-data th:first-child { width: 76px; }
+    .mover-table td, .mover-table th { padding: 8px; }
+    .mover-table td:first-child { min-width: 100px; }
+    .change-positive { color: var(--cp-success); }
+    .change-negative { color: var(--cp-danger); }
+    .credits-report-grid { display: grid; grid-template-columns: minmax(0,2fr) minmax(240px,1fr); gap: 20px; margin-bottom: 20px; }
+    .credit-matrix { min-width: 1060px; font-size: 11px; }
+    .credit-matrix th, .credit-matrix td { padding: 8px 6px; }
+    .credit-matrix th:first-child { min-width: 200px; }
+    .credit-matrix .matrix-total th, .credit-matrix .matrix-total td { background: var(--cp-accent-soft); font-weight: 600; }
+    .yearend-value { font-size: 22px; font-weight: 650; font-variant-numeric: tabular-nums; }
+    .credit-combo { min-width: 640px; }
+    .savings-comparison th, .savings-comparison td { padding: 8px; }
+    .savings-comparison th { white-space: normal; }
+    .savings-comparison .enrollment-heading { text-align: center; color: var(--cp-accent); background: var(--cp-accent-soft); }
+    .savings-comparison .model-total th, .savings-comparison .model-total td { font-weight: 650; background: var(--cp-surface-soft); }
+    .savings-matrix { min-width: 1320px; }
+    .savings-chart-data { min-width: 720px; }
+    .savings-chart-data th, .savings-chart-data td { white-space: nowrap; }
+    .savings-matrix .matrix-total th, .savings-matrix .matrix-total td { background: var(--cp-accent-soft); font-weight: 650; }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+    @media screen {
+      html[data-appearance="clean-light"] .card { box-shadow: none; }
+    }
+    @media screen and (min-width: 761px) {
+      html[data-appearance="compact-workbook"] main { padding: 20px 24px 32px; }
+      html[data-appearance="compact-workbook"] .card { padding: 14px; }
+      html[data-appearance="compact-workbook"] .kpi { min-height: 120px; }
+      html[data-appearance="compact-workbook"] .kpi.hero { padding-top: 12px; }
+      html[data-appearance="compact-workbook"] .kpi-value { font-size: 26px; margin: 8px 0; }
+      html[data-appearance="compact-workbook"] .kpi.hero .kpi-value { font-size: 32px; }
+      html[data-appearance="compact-workbook"] .card-heading { margin-bottom: 12px; }
+      html[data-appearance="compact-workbook"] .data-table { font-size: 11px; }
+      html[data-appearance="compact-workbook"] .data-table th,
+      html[data-appearance="compact-workbook"] .data-table td { padding: 6px 8px; }
+      html[data-appearance="compact-workbook"] .kpis { gap: 12px; }
+      html[data-appearance="executive-light"] .card { padding: 24px; }
+      html[data-appearance="executive-light"] .kpi { min-height: 184px; }
+      html[data-appearance="executive-light"] .kpi-value { font-size: clamp(32px, 3vw, 44px); }
+      html[data-appearance="executive-light"] .kpi.hero .kpi-value { font-size: clamp(36px, 3.5vw, 52px); }
+      html[data-appearance="executive-light"] .kpis { gap: 20px; }
+      html[data-appearance="executive-light"] .data-table { font-size: 13px; }
+      html[data-appearance="executive-light"] .chart-table td { padding-top: 12px; padding-bottom: 12px; }
+    }
+    @media (max-width: 1250px) {
+      .kpis { grid-template-columns: 1fr 1fr; }
+      .grid-main, .grid-2 { grid-template-columns: 1fr; }
+      .workbook-pair, .credits-report-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 760px) {
+      .topbar { padding: 16px; align-items: flex-start; flex-wrap: wrap; }
+      .topbar > .actions { width: 100%; }
+      .app { display: block; }
+      .sidebar { border-right: 0; border-bottom: 1px solid var(--cp-border); padding: 16px; }
+      .nav { display: flex; flex-wrap: wrap; margin: 8px 0 16px; }
+      .nav button { padding: 8px; }
+      .sidebar-foot { display: none; }
+      .scope-options > summary { display: list-item; cursor: pointer; font-weight: 600; color: var(--cp-accent); padding: 8px 0; }
+      .filter-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+      .field { min-width: 0; }
+      main { padding: 24px 16px; }
+      .page-heading { display: block; }
+      .page-heading .pill { margin-top: 12px; }
+      h1 { font-size: 26px; }
+      .card-heading { flex-wrap: wrap; }
+      .banner { align-items: flex-start; }
+      .source-grid { grid-template-columns: 1fr; gap: 4px; }
+      .source-grid dd { margin-bottom: 12px; }
+    }
+    @media (max-width: 440px) {
+      .kpis { grid-template-columns: 1fr; }
+      .filter-fields { grid-template-columns: 1fr; }
+    }
+    @media print {
+      @page { size: A4 landscape; margin: 12mm; }
+      .topbar, .sidebar, .no-print, .table-tools, .pager, .banner button, .info { display: none !important; }
+      body { background: var(--cp-surface); font-size: 11px; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+      .app { display: block; }
+      main { padding: 0; }
+      h1 { font-size: 25px; }
+      .page-heading { margin-bottom: 16px; }
+      .kpis { grid-template-columns: 1.3fr 1fr 1fr 1fr; gap: 10px; }
+      .kpi { min-height: 125px; padding: 14px; }
+      .kpi-value, .kpi.hero .kpi-value { font-size: 28px; }
+      .card { box-shadow: none; break-inside: avoid; padding: 14px; }
+      .grid-main { grid-template-columns: 1.4fr 1fr; gap: 12px; }
+      .grid-2 { grid-template-columns: 1fr 1fr; gap: 12px; }
+      .data-table { font-size: 10px; }
+      .data-table th, .data-table td { padding: 8px; }
+      .notes-print { display: block; }
+      .report-footer label { display: none; }
+      .table-wrap { overflow: visible; }
+      .workbook-pair { grid-template-columns: minmax(0,1fr) minmax(0,1.6fr); gap: 12px; }
+      .workbook-pair > .card { break-inside: auto; }
+      .pivot-scroll { max-height: none; overflow: visible; }
+      .pivot-table { font-size: 9px; }
+      .pivot-table th, .pivot-table td { padding: 4px; }
+      .pivot-table td:first-child { min-width: 80px; }
+      .pivot-table thead th { position: static; }
+      .column-chart, .credit-combo { min-width: 0; }
+      .chart-scroll { overflow: visible; }
+      .credit-matrix { min-width: 0; font-size: 8px; }
+      .credit-matrix th, .credit-matrix td { padding: 4px 3px; }
+      .credit-matrix th:first-child { min-width: 140px; }
+      .savings-matrix { min-width: 0; font-size: 7px; }
+      .savings-chart-data { min-width: 0; font-size: 8px; }
+      .savings-comparison { font-size: 9px; }
+      .savings-comparison th, .savings-comparison td { padding: 5px; }
+      .credits-report-grid { grid-template-columns: minmax(0,2fr) minmax(0,1fr); gap: 12px; }
+      .print-page-note { display: block !important; font-size: 10px; color: var(--cp-text-muted); margin-top: 12px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><div class="brandmark" aria-hidden="true">MBR</div><div><strong>Azure cost reporting</strong><small>Workbook intelligence, kept local</small></div></div>
+    <div class="actions">
+      <label class="appearance-control">Appearance<select id="appearance-select">
+        <option value="clean-light">Clean light</option>
+        <option value="dark-charcoal">Dark charcoal</option>
+        <option value="compact-workbook">Compact workbook</option>
+        <option value="executive-light">Executive review</option>
+      </select></label>
+      <button id="export-view">Export view CSV</button>
+      <button id="download-report">Download report (.txt)</button>
+      <button id="print-report" class="primary">Print / Save PDF</button>
+    </div>
+  </header>
+  <div class="app">
+    <aside class="sidebar" aria-label="Reporting navigation and filters">
+      <p class="eyebrow">Reporting workspace</p>
+      <nav class="nav" aria-label="Report pages">
+        <div class="enrollment-links" id="enrollment-links" aria-label="Enrollment detail pages"></div>
+        <button data-view="native" aria-pressed="false">All enrollments - native comparison</button>
+        <button data-view="summary" aria-pressed="false">Report summary</button>
+        <button data-view="trend" aria-pressed="false">Trends</button>
+        <button data-view="drivers" aria-pressed="false">Cost drivers - tables &amp; charts</button>
+        <button data-view="subscriptions" aria-pressed="false">Subscription changes</button>
+        <button data-view="credits" aria-pressed="false">Credits (eligibility proxy)</button>
+        <button data-view="savings" aria-pressed="false">Savings (estimates)</button>
+        <button data-view="forecast" aria-pressed="false">Projections</button>
+        <button data-view="potential" aria-pressed="false">Advisor potential</button>
+        <button data-view="spend" aria-pressed="false">Spend explorer</button>
+        <button data-view="advisor" aria-pressed="false">Advisor detail</button>
+        <button data-view="uploads" aria-pressed="false">Upload data</button>
+        <button data-view="quality" aria-pressed="false">Data &amp; definitions</button>
+      </nav>
+      <details class="scope-options" id="scope-options" open><summary>Report filters</summary>
+      <section id="spend-filters" aria-label="Spend filters">
+        <div class="filter-heading"><h3>Spend scope</h3><button class="link-button" id="reset-spend">Reset</button></div>
+        <div class="filter-fields">
+          <label class="field">Source workbook<select id="filter-source" data-filter="source"></select></label>
+          <label class="field">Reporting month / as of<select id="filter-month" data-filter="month"></select></label>
+          <label class="field" id="filter-enrollment-field">Enrollment<select id="filter-enrollment" data-filter="enrollment"></select></label>
+          <label class="field">Service<select id="filter-service" data-filter="service"></select></label>
+          <label class="field">Pricing model<select id="filter-pricing" data-filter="pricing"></select></label>
+          <label class="field">Greenfield / Brownfield<select id="filter-portfolio" data-filter="portfolio"></select></label>
+          <label class="field">Region<select id="filter-region" data-filter="region"></select></label>
+          <label class="field">Publisher type<select id="filter-publisher" data-filter="publisher"></select></label>
+          <label class="field">Subscription contains<input id="filter-query" data-filter="query" type="search" placeholder="Search subscription names" autocomplete="off"></label>
+        </div>
+      </section>
+      <section id="advisor-filters" aria-label="Advisor filters" hidden>
+        <div class="filter-heading"><h3>Advisor scope</h3><button class="link-button" id="reset-advisor">Reset</button></div>
+        <div class="filter-fields">
+          <label class="field">Advisor snapshot<select id="advisor-source"></select></label>
+          <label class="field">Enrollment<select id="advisor-enrollment" data-advisor-filter="enrollment"></select></label>
+          <label class="field">Service mapping<select id="advisor-service" data-advisor-filter="service"></select></label>
+          <label class="field">Business impact<select id="advisor-impact" data-advisor-filter="impact"></select></label>
+          <label class="field" id="advisor-production-field">Production mapping<select id="advisor-production" data-advisor-filter="production"></select></label>
+          <label class="field">Search recommendations<input id="advisor-query" data-advisor-filter="query" type="search" placeholder="Subscription, resource or text" autocomplete="off"></label>
+        </div>
+        <p class="note">Separate source and dates. Spend filters do not apply to Advisor estimates.</p>
+      </section>
+      </details>
+      <div class="sidebar-foot">
+        <p class="eyebrow">Local reporting</p>
+        <p class="note" style="margin-top:8px">No cloud connection. Use Upload data on the local reporting server to validate and retain only two billing months. This file remains an offline snapshot.</p>
+      </div>
+    </aside>
+    <main id="main-content">
+      <div id="fatal-error" class="banner error" role="alert" hidden></div>
+      <div id="appearance-status" class="banner no-print" role="status" hidden></div>
+      <div class="page-heading">
+        <div><p class="eyebrow" id="page-eyebrow">Monthly business review</p><h1 id="page-title">Azure spend overview</h1><p class="muted" id="page-subtitle">Reading the local snapshot...</p></div>
+        <span class="pill"><span class="status-dot" aria-hidden="true"></span><span id="currency-badge">Native source currencies</span></span>
+      </div>
+      <article class="card no-print" id="report-scope-control" style="margin-bottom:20px">
+        <label class="field" style="max-width:440px;margin:0">Reporting enrollment and currency<select id="report-scope"></select></label>
+        <p class="note" style="margin-top:8px">All reporting tabs follow this selection. Native enrollment amounts use no FX. Combined USD ($) converts original amounts at saved rates; credit pools use the reporting month and Advisor estimates use their source update month. Original source currencies remain labelled.</p>
+      </article>
+      <div class="banner" id="coverage-banner">
+        <div><strong>Source coverage matters</strong><p id="coverage-text"></p></div>
+        <button data-view="quality" class="no-print">Review gaps</button>
+      </div>
+      <div class="scope" id="scope" aria-label="Current report scope"></div>
+      <p class="sr-only" id="result-announcement" role="status" aria-live="polite"></p>
+
+      <section id="enrollment-panel" aria-label="Enrollment details">
+        <article class="card no-print" style="margin-bottom:20px">
+          <div class="card-heading"><label class="field" style="min-width:220px;margin:0">Enrollment detail page<select id="detail-enrollment"></select></label><button id="detail-reset">Reset this enrollment</button></div>
+          <p class="note">Each detail page is scoped to one enrollment and its original currency. Use the report filters for period, service, pricing model, region, publisher, portfolio or subscription search.</p>
+        </article>
+        <div class="kpis" id="detail-kpis"></div>
+        <article class="card" style="margin-bottom:20px"><h2>Native monthly history</h2><p class="note" id="detail-history-note"></p><div id="detail-history-chart"></div></article>
+        <div class="grid-main">
+          <article class="card"><div class="card-heading"><div><h2>Services driving this enrollment</h2><p class="note">Top services; click a name to filter. The remaining groups stay in Other.</p></div></div><div id="detail-service-chart"></div></article>
+          <article class="card"><div class="card-heading"><div><h2>Pricing-model cost</h2><p class="note">Recorded on-demand, reservation, savings-plan and spot cost; not achieved savings.</p></div></div><div id="detail-pricing-chart"></div></article>
+        </div>
+        <div class="grid-2">
+          <article class="card"><h2>Regions</h2><div id="detail-region-chart"></div></article>
+          <article class="card"><h2>Azure / Marketplace publisher</h2><div id="detail-publisher-chart"></div></article>
+        </div>
+        <div class="grid-2">
+          <article class="card"><h2>Greenfield / Brownfield</h2><p class="note">The inherited workbook naming rule, not application-tag attribution.</p><div id="detail-portfolio-chart"></div></article>
+          <article class="card"><h2>Original charge types</h2><p class="note">Purchase, refund, unused benefits and signed adjustments remain included.</p><div id="detail-charge-chart"></div></article>
+        </div>
+        <article class="card">
+          <div class="card-heading">
+            <div><h2>Enrollment detail and period changes</h2><p class="note" id="detail-table-caption"></p></div>
+            <div class="table-tools">
+              <label class="sr-only" for="detail-dimension">Group enrollment cost by</label>
+              <select id="detail-dimension"><option value="subscription">By subscription</option><option value="service">By service</option><option value="region">By region</option><option value="pricing">By pricing model</option><option value="publisher">By publisher</option><option value="charge_type">By original charge type</option><option value="portfolio">By portfolio</option></select>
+              <label class="sr-only" for="detail-sort">Sort enrollment groups</label>
+              <select id="detail-sort"><option value="cost">Current cost: high to low</option><option value="increase">Change: high to low</option><option value="decrease">Change: low to high</option><option value="name">Name: A to Z</option></select>
+              <button id="export-enrollment-data">Export scoped native data</button>
+            </div>
+          </div>
+          <div class="table-wrap"><table class="data-table"><thead><tr><th id="detail-group-label">Subscription</th><th class="num" id="detail-current-label">Current native cost</th><th class="num" id="detail-previous-label">Prior native cost</th><th class="num">Native change</th><th class="num">Period change <span class="info" tabindex="0" title="Current group cost minus prior group cost, divided by non-zero prior group cost in the same currency. Missing source periods are unavailable; absent groups in supplied periods are zero." aria-label="Group period change definition">i</span></th><th class="num">Share <span class="info" tabindex="0" title="Signed group native cost divided by all selected current native cost. Not available for a zero denominator." aria-label="Group share definition">i</span></th><th class="num">Original rows</th></tr></thead><tbody id="detail-table"></tbody></table></div>
+          <div class="pager no-print"><span class="note" id="detail-page-label"></span><div class="actions"><button id="detail-previous">Previous</button><button id="detail-next">Next</button></div></div>
+          <p class="note print-page-note" id="detail-print-note"></p>
+        </article>
+        <article class="card" style="margin-top:20px"><h2>Enrollment sources and definitions</h2><div id="detail-sources" class="source-list"></div><p class="note" style="margin-top:16px">Credit eligibility is not drawdown. Benefit utilization is cost-weighted, not hours. GBP credit-pool inputs, source-price savings, Advisor estimates and forecasts remain in separate labelled GBP workspaces; no reverse conversion is inferred here. Resource, meter and product-level evidence is not retained in this grouped reporting snapshot.</p></article>
+      </section>
+
+      <section id="native-panel" aria-label="Native currency comparison" hidden>
+        <div class="banner"><div><strong id="native-currency-heading">Source currencies stay separate</strong><p>These are the original source costs. Different currencies are not added or stacked. Other reporting tabs follow the selected enrollment currency; Combined USD ($) is an explicit alternative with its FX assumptions shown.</p></div></div>
+        <div class="grid-2" id="native-kpis"></div>
+        <div id="native-detail-links" class="actions no-print" style="margin-bottom:20px"></div>
+        <article class="card" style="margin-bottom:20px">
+          <div class="card-heading"><div><h2>Enrollment comparison in native currency</h2><p class="note">Signed cost and change within the same currency. Missing source currency/amounts are unavailable, never inferred from GBP.</p></div></div>
+          <div class="table-wrap"><table class="data-table"><thead><tr><th>Enrollment</th><th>Source currency</th><th class="num" id="native-current-month">Current native cost</th><th class="num" id="native-prior-month">Prior native cost</th><th class="num">Native change</th><th class="num">Period change <span class="info" tabindex="0" title="(Current native cost minus the named comparison month's native cost) divided by that same native cost. Not available for missing periods, zero denominator or different currencies." aria-label="Native period change definition">i</span></th><th class="num">Original rows</th></tr></thead><tbody id="native-table"></tbody></table></div>
+        </article>
+        <div class="grid-2" id="native-charts"></div>
+      </section>
+
+      <section id="uploads-panel" aria-label="Upload report data" hidden>
+        <div class="banner"><div><strong>Annual history, two-month detailed comparisons</strong><p>Older files backfill annual/YTD totals, credit and savings matrices, and projections. Detailed enrollment, cost-driver, trend and spend comparisons still use only the two newest supplied months. Source files, verification references and the main database are unchanged.</p></div></div>
+        <div id="upload-local-only" class="card" hidden>
+          <h2>Start the local upload service</h2>
+          <p class="note" style="margin-top:12px">A standalone HTML file cannot safely read protected Excel files or save updates to itself. Start the reporting service from the project directory, then open its local address:</p>
+          <p class="mono" style="margin-top:12px">rtk proxy python 'scripts\serve_mbr_dashboard.py'</p>
+          <p style="margin-top:12px"><a href="http://127.0.0.1:8766/#uploads">Open local report uploads</a></p>
+          <p class="note">The service binds only to this PC. Excel workbooks need desktop Excel access; UTF-8 CSVs do not.</p>
+        </div>
+        <article class="card" style="margin-bottom:20px">
+          <div class="card-heading"><div><h2>Active comparison data</h2><p class="note" id="upload-retention"></p></div></div>
+          <div class="table-wrap"><table class="data-table"><thead><tr><th>Month</th><th>Enrollment</th><th>Source currency</th><th class="num">Original native cost</th><th class="num">Separate converted GBP</th><th class="num">Source rows</th></tr></thead><tbody id="upload-current-table"></tbody></table></div>
+        </article>
+        <article class="card" style="margin-bottom:20px">
+          <div class="card-heading"><div><h2>Separate annual history coverage</h2><p class="note" id="upload-annual-note"></p></div></div>
+          <div class="table-wrap"><table class="data-table"><thead><tr><th>Month</th><th>Enrollment</th><th>Native currency</th><th class="num">Original native cost</th><th class="num">Source rows</th><th>Used by</th></tr></thead><tbody id="upload-annual-table"></tbody></table></div>
+        </article>
+        <article class="card no-print">
+          <h2>1. Choose and validate a file</h2>
+          <p class="note" style="margin-top:8px">Validation does not replace report data. Use a complete file containing every partition for each enrollment/month. Uploads are limited to 128 MiB. File names do not determine the billing month.</p>
+          <div class="assumptions" style="margin-top:16px">
+            <label class="field">File type<select id="upload-kind"><option value="workbook">MBR workbook (.xlsb / .xlsx)</option><option value="cost">Cost data CSV</option><option value="advisor">Advisor CSV</option></select></label>
+            <label class="field">Local file<input id="upload-file" type="file" accept=".xlsb,.xlsx,.csv"></label>
+            <label class="field">Declared cost basis for CSV<select id="upload-basis"><option value="amortized">Amortized</option><option value="actual">Actual / billed</option></select></label>
+          </div>
+          <div class="assumptions" id="upload-currency-options" hidden>
+            <label class="field">Native currency if the CSV has no currency column<input id="upload-currency" type="text" maxlength="3" placeholder="From file, or enter GBP / USD / EUR" autocomplete="off"></label>
+            <label class="field">GBP per one foreign-currency unit (optional)<input id="upload-rate" type="text" inputmode="decimal" placeholder="Explicit rate; never guessed" autocomplete="off"></label>
+          </div>
+          <p class="note">Enrollment reports use original native amounts. The stored GBP comparison also requires a saved Cost GBP column or an explicit rate for foreign costs. Native savings do not require FX; missing price, quantity or allocation inputs remain unavailable. Uploading a different cost basis is refused.</p>
+          <button id="upload-validate" class="primary" style="margin-top:16px">Validate upload</button>
+          <p id="upload-status" class="note" role="status" aria-live="polite" style="margin-top:12px"></p>
+          <div id="upload-error" class="banner error" role="alert" style="margin-top:12px" hidden></div>
+        </article>
+        <article id="upload-preview" class="card no-print" style="margin-top:20px" hidden>
+          <h2>2. Review and apply</h2><p class="note" id="upload-preview-summary" style="margin-top:12px"></p>
+          <div class="table-wrap"><table class="data-table"><thead><tr><th>Month / enrollment</th><th>Action</th><th class="num">Previous GBP</th><th class="num">Incoming GBP</th><th class="num">Incoming rows</th></tr></thead><tbody id="upload-preview-table"></tbody></table></div>
+          <label class="field" id="upload-replace-label" style="margin-top:16px" hidden><input type="checkbox" id="upload-replace" style="width:auto"> Replace the entire enrollment/month scopes shown, using all rows in this upload. I have included every required partition.</label>
+          <p class="note" style="margin-top:12px">Applying saves the report atomically and reloads the page. Tab-only commentary and scenario inputs are cleared; export them first if needed. No original workbook is changed.</p>
+          <button id="upload-apply" class="primary" style="margin-top:12px">Apply to report</button>
+        </article>
+        <article class="card" style="margin-top:20px">
+          <h2>Which columns are needed?</h2>
+          <h3 style="margin-top:16px">Cost CSV: required</h3>
+          <p class="note">BillingPeriodStartDate (or Date/UsageDate), BillingAccountId, MeterCategory, SubscriptionName, PricingModel, PublisherType, Cost (or CostInBillingCurrency).</p>
+          <p class="note">Also provide BillingCurrency/BillingCurrencyCode/Currency, or declare the currency above. Non-GBP costs need Cost GBP or an explicit GBP conversion rate. Enrollment names come from Enrolment/Enrollment/BillingAccountName, or the existing report account mapping.</p>
+          <h3 style="margin-top:16px">Needed for the additional views</h3>
+          <p class="note">IsAzureCreditEligible for the credit proxy; Sub Type for Greenfield/Brownfield; ResourceLocation for regional splits. Savings estimates need UnitPrice (the workbook's numeric Unit column), Quantity and Utilization Type or ChargeType. Product plus explicit source discounts are needed for commitment-tier estimates. Missing inputs are flagged, not filled with zero.</p>
+          <h3 style="margin-top:16px">Advisor CSV: required</h3>
+          <p class="note">Recommendation, Subscription ID, Subscription Name, Resource Name, Business Impact, Updated Date (or Last refreshed on), Potential Annual Cost Savings, Potential Cost Savings Currency. An Excel sep=, declaration is supported. Empty savings/currency values are retained as unvalued; a populated savings amount requires its currency. Optional mappings: Enrollment, Prod, Service, Savings GBP, Sub. Unmapped recommendations remain visible in Combined Advisor detail, not assigned to an enrollment by guesswork.</p>
+          <h3 style="margin-top:16px">Original MBR workbooks</h3>
+          <p class="note">The existing data sheet and cost-basis/currency labels are read unchanged. Advisor Data Dump, Credits and Command Panel are used when present. Macros and link updates stay disabled. You must already have Excel access; no password or permissions are bypassed.</p>
+        </article>
+      </section>
+
+      <section id="summary-panel" aria-label="Report summary" hidden>
+        <div class="kpis" id="summary-kpis"></div>
+        <article class="card">
+          <div class="card-heading"><div><h2>Monthly business review</h2><p class="note" id="summary-caption"></p></div></div>
+          <div class="table-wrap"><table class="data-table"><thead id="summary-head"></thead><tbody id="summary-table"></tbody></table></div>
+          <p class="note" id="summary-estimate-note" style="margin-top:16px"></p>
+        </article>
+        <div class="grid-2" id="summary-enrollments" style="margin-top:20px"></div>
+      </section>
+
+      <section id="trend-panel" aria-label="Trend" hidden>
+        <article class="card" style="margin-bottom:20px"><div class="card-heading"><div><h2>Recorded spend by enrollment</h2><p class="note">Selected reporting currency: <span data-report-currency>GBP</span>. Lines stop at missing periods; they do not fill gaps with zero.</p></div><button id="trend-workbook-scope" class="no-print">Match workbook: Azure publisher</button></div><div id="trend-chart"></div></article>
+        <div class="grid-2">
+          <article class="card"><h2>Azure / Marketplace</h2><div id="usage-trend"></div></article>
+          <article class="card"><h2>Greenfield / Brownfield</h2><div id="portfolio-trend"></div></article>
+        </div>
+        <article class="card" style="margin-bottom:20px"><h2>Pricing-model trend</h2><div id="pricing-trend"></div></article>
+        <article class="card"><div class="card-heading"><div><h2>Monthly trend data</h2><p class="note">A supplied month with no matching activity is zero; an unsupplied month is unavailable.</p></div></div><div class="table-wrap"><table class="data-table"><thead><tr><th>Month</th><th>Enrollment</th><th class="num">Recorded cost (<span data-report-currency>GBP</span>)</th><th class="num">Eligible cost (<span data-report-currency>GBP</span>)</th><th>Coverage</th></tr></thead><tbody id="trend-table"></tbody></table></div></article>
+      </section>
+
+      <section id="drivers-panel" aria-label="Workbook-style cost drivers" hidden>
+        <div class="banner"><div><strong>Workbook-style pivots and cost movements</strong><p id="drivers-scope-note"></p></div></div>
+        <div class="workbook-pair">
+          <article class="card">
+            <div class="card-heading"><div><h2>Cost by region</h2><p class="note" id="drivers-region-note"></p></div></div>
+            <div class="table-wrap pivot-scroll" tabindex="0" role="region" aria-label="All region cost rows" id="drivers-region-pivot"></div>
+          </article>
+          <article class="card"><h2 id="drivers-region-title">Regional cost comparison</h2><p class="note">Top five regions plus Other. Table labels filter the report.</p><div id="drivers-region-chart"></div></article>
+        </div>
+        <div class="workbook-pair">
+          <article class="card">
+            <div class="card-heading"><div><h2>Cost by service</h2><p class="note" id="drivers-service-note"></p></div></div>
+            <div class="table-wrap pivot-scroll" tabindex="0" role="region" aria-label="All service cost rows" id="drivers-service-pivot"></div>
+          </article>
+          <article class="card"><h2 id="drivers-service-title">Service cost comparison</h2><p class="note">Top ten services plus Other; both months shown. Credits and refunds stay signed.</p><div id="drivers-service-chart"></div></article>
+        </div>
+        <div class="grid-2" id="drivers-movers"></div>
+        <article class="card">
+          <div class="card-heading">
+            <div><h2>Detailed changes and ranks</h2><p class="note" id="drivers-table-caption"></p></div>
+            <div class="table-tools">
+              <label class="sr-only" for="drivers-dimension">Compare services or regions</label>
+              <select id="drivers-dimension"><option value="service">Services</option><option value="region">Regions</option></select>
+              <label class="sr-only" for="drivers-sort">Sort cost driver comparisons</label>
+              <select id="drivers-sort"><option value="cost">Current cost: high to low</option><option value="increase">Biggest cost increases</option><option value="decrease">Biggest cost decreases</option><option value="name">Name: A to Z</option></select>
+            </div>
+          </div>
+          <div class="table-wrap"><table class="data-table"><thead id="drivers-detail-head"></thead><tbody id="drivers-detail-table"></tbody></table></div>
+          <div class="pager no-print"><span class="note" id="drivers-page-label"></span><div class="actions"><button id="drivers-previous">Previous</button><button id="drivers-next">Next</button></div></div>
+          <p class="print-page-note" id="drivers-print-note" hidden></p>
+        </article>
+      </section>
+
+      <section id="subscriptions-panel" aria-label="Subscription cost percentage changes" hidden>
+        <div class="banner"><div><strong>Percentage change in subscription spend</strong><p id="subscriptions-definition"></p></div></div>
+        <article class="card">
+          <div class="card-heading">
+            <div><h2>Subscription comparison</h2><p class="note" id="subscriptions-caption"></p></div>
+            <div class="table-tools">
+              <label class="sr-only" for="subscriptions-sort">Sort subscription changes</label>
+              <select id="subscriptions-sort">
+                <option value="percentage-increase">Biggest % increases</option>
+                <option value="percentage-decrease">Biggest % decreases</option>
+                <option value="increase">Biggest cost increases</option>
+                <option value="decrease">Biggest cost decreases</option>
+                <option value="cost">Current cost: high to low</option>
+                <option value="name">Subscription name: A to Z</option>
+              </select>
+            </div>
+          </div>
+          <div class="table-wrap" tabindex="0" role="region" aria-label="Subscription period comparison table">
+            <table class="data-table"><thead><tr>
+              <th scope="col">Subscription name</th><th scope="col">Enrollment</th>
+              <th class="num" scope="col" id="subscriptions-comparison-label">Comparison cost</th>
+              <th class="num" scope="col" id="subscriptions-current-label">Current cost</th>
+              <th class="num" scope="col" id="subscriptions-change-label">Cost change</th>
+              <th class="num" scope="col">Change % <span class="info" tabindex="0" title="100 x (current cost minus comparison cost) / comparison cost. Both enrollment periods must be supplied and the comparison cost must be positive." aria-label="Percentage change definition">i</span></th>
+              <th scope="col">Comparison status</th>
+            </tr></thead><tbody id="subscriptions-table"></tbody></table>
+          </div>
+          <div class="pager no-print"><span class="note" id="subscriptions-page-label"></span><div class="actions">
+            <button id="subscriptions-previous" aria-label="Previous subscription comparison page">Previous</button>
+            <button id="subscriptions-next" aria-label="Next subscription comparison page">Next</button>
+          </div></div>
+          <p class="print-page-note" id="subscriptions-print-note" hidden></p>
+        </article>
+      </section>
+
+      <section id="credits-panel" aria-label="Credits" hidden>
+        <div class="banner"><div><strong>Workbook credit proxy, not a financial credit ledger</strong><p>The workbook calls eligible spend &ldquo;credits consumed&rdquo;. This view reproduces the calculation with honest labels: eligibility does not prove credits were drawn, and the pool is a source input.</p></div></div>
+        <div class="kpis" id="credits-kpis"></div>
+        <article class="card" style="margin-bottom:20px">
+          <div class="card-heading"><div><h2>January-December credit-eligibility matrix</h2><p class="note" id="credits-matrix-note"></p></div><button id="export-credit-matrix" class="no-print">Export 12-month matrix CSV</button></div>
+          <div class="table-wrap" tabindex="0" role="region" aria-label="Twelve-month credit-eligibility matrix"><table class="data-table credit-matrix"><thead id="credits-matrix-head"></thead><tbody id="credits-matrix-table"></tbody></table></div>
+        </article>
+        <div class="credits-report-grid">
+          <article class="card"><h2>Monthly cumulative proxy and pool coverage</h2><p class="note">Columns: known recorded eligible cost, left axis. Lines: coverage of a same-currency source pool, right axis. Missing actual months remain gaps.</p><div id="credits-chart"></div></article>
+          <article class="card"><h2>Calendar-year baseline and coverage</h2><div id="credits-yearend" class="stack" style="margin-top:16px"></div><p class="note" id="credits-baseline-note" style="margin-top:16px"></p></article>
+        </div>
+        <article class="card" style="margin-bottom:20px"><h2>Against workbook pool inputs</h2><div id="credits-pools" class="stack" style="margin-top:16px"></div></article>
+        <article class="card"><h2>Calendar-year coverage and credit proxy</h2><div class="table-wrap"><table class="data-table"><thead><tr><th>Month</th><th>Enrollment</th><th class="num">Eligible cost (<span data-report-currency>GBP</span>)</th><th class="num">Recorded cumulative (<span data-report-currency>GBP</span>)</th><th>Coverage</th></tr></thead><tbody id="credits-table"></tbody></table></div></article>
+      </section>
+
+      <section id="savings-panel" aria-label="Savings and utilization" hidden>
+        <div class="banner"><div><strong>Corrected estimates, not certified realized savings</strong><p>On-demand aliases are excluded; unused charges are subtracted in the same currency as the estimate. Native estimates use original Unit price, Quantity and cost without FX. The source baseline is not independently verified. Utilization is cost-weighted, not hours or capacity.</p></div></div>
+        <div class="kpis" id="savings-kpis"></div>
+        <article class="card" style="margin-bottom:20px">
+          <div class="card-heading"><div><h2>Savings and utilization by enrollment</h2><p class="note" id="savings-comparison-note"></p></div></div>
+          <div class="table-wrap" tabindex="0" role="region" aria-label="Enrollment savings and utilization comparison"><table class="data-table savings-comparison"><thead id="savings-comparison-head"></thead><tbody id="savings-comparison-table"></tbody></table></div>
+        </article>
+        <article class="card" style="margin-bottom:20px">
+          <div class="card-heading"><div><h2>January-December savings estimates</h2><p class="note" id="savings-matrix-note"></p></div><button id="export-savings-matrix" class="no-print">Export 12-month savings CSV</button></div>
+          <div class="table-wrap" tabindex="0" role="region" aria-label="Twelve-month savings estimate matrix"><table class="data-table credit-matrix savings-matrix"><thead id="savings-matrix-head"></thead><tbody id="savings-matrix-table"></tbody></table></div>
+        </article>
+        <div class="credits-report-grid">
+          <article class="card"><h2 id="savings-chart-title">Monthly savings estimates</h2><p class="note">Known source-price estimates by enrollment, not realized savings. An asterisk and dashed columns mark partial estimates. Missing actual months remain gaps.</p><div id="savings-chart"></div><p class="note" id="savings-input-note"></p></article>
+          <article class="card"><h2>Year-end savings scenarios</h2><div id="savings-yearend" class="stack" style="margin-top:16px"></div><p class="note" id="savings-baseline-note" style="margin-top:16px"></p></article>
+        </div>
+        <article class="card"><h2>Detailed savings and cost-weighted utilization</h2><p class="note">SavingsPlan utilization uses VM cost, matching the workbook scope. Reservation uses all services. Service rows overlap their parent models and must not be added again. Utilization movements are percentage points.</p><div class="table-wrap"><table class="data-table"><thead><tr><th>Model / service</th><th>Enrollment</th><th class="num">Known net estimate (<span data-report-currency>GBP</span>)</th><th class="num" id="savings-change-label">Change vs prior month</th><th class="num">Cost-weighted utilization</th><th class="num">Utilization change (pp)</th><th class="num">Unpriced rows</th></tr></thead><tbody id="savings-table"></tbody></table></div><p class="note" id="savings-expiry-note" style="margin-top:16px"></p></article>
+      </section>
+
+      <section id="forecast-panel" aria-label="Projections" hidden>
+        <div class="banner"><div><strong>Calendar-year what-if, not a guaranteed forecast</strong><p>Future months use the selected month's daily pace. Supplied periods are assumed complete only for this scenario. Missing past months prevent a full-year figure unless their amounts are explicitly supplied below.</p></div></div>
+        <article class="card no-print">
+          <h2>Scenario assumptions</h2>
+          <label class="field" style="max-width:320px;margin-top:16px">Change in daily pace (%)<input id="forecast-change" type="text" inputmode="decimal" value="0" autocomplete="off"></label>
+          <p class="note">Applies equally to cost, eligible cost and source-price estimates. Assumptions are tied to the selected enrollment, currency, source, reporting month and filters, and are not independently validated.</p>
+          <div id="forecast-actuals" class="assumptions"></div>
+        </article>
+        <div id="forecast-error" class="banner error" role="alert" hidden></div>
+        <div id="forecast-results">
+          <div class="kpis" id="forecast-kpis" style="margin-top:20px"></div>
+          <article class="card" style="margin-bottom:20px"><h2>Recorded spend and future monthly scenario</h2><div id="forecast-chart"></div></article>
+          <article class="card"><h2>Projection components</h2><div class="table-wrap"><table class="data-table"><thead><tr><th>Enrollment / measure</th><th class="num">Recorded to date (<span data-report-currency>GBP</span>)</th><th class="num">Earlier-period input (<span data-report-currency>GBP</span>)</th><th class="num">Remaining-year scenario (<span data-report-currency>GBP</span>)</th><th class="num">Recorded + future, excluding gaps (<span data-report-currency>GBP</span>)</th><th class="num">Full-year scenario (<span data-report-currency>GBP</span>)</th><th class="num">Known-priced savings component (<span data-report-currency>GBP</span>)</th></tr></thead><tbody id="forecast-table"></tbody></table></div><p id="forecast-assumptions-print" class="note" style="margin-top:16px"></p></article>
+        </div>
+      </section>
+
+      <section id="potential-panel" aria-label="Advisor potential savings" hidden>
+        <div class="banner"><div><strong>Annual estimates on a separate as-of date</strong><p>This workbook-style view uses production-only recommendations in its five named service categories. Estimates may overlap. They are not monthly spend or realized savings; unknown values are not zero.</p></div></div>
+        <div class="kpis" id="potential-kpis"></div>
+        <article class="card"><h2>Production opportunity summary</h2><p class="note" id="potential-caption"></p><div class="table-wrap"><table class="data-table"><thead><tr><th>Service</th><th>Enrollment</th><th class="num">Listed annual estimate (<span data-report-currency>GBP</span>)</th><th class="num">Prior provided snapshot (<span data-report-currency>GBP</span>)</th><th class="num">Snapshot change (<span data-report-currency>GBP</span>)</th><th class="num">Valued rows</th></tr></thead><tbody id="potential-table"></tbody></table></div></article>
+      </section>
+
+      <section id="spend-panel" aria-label="Spend overview" hidden>
+        <div class="kpis" id="spend-kpis"></div>
+        <div class="grid-main">
+          <article class="card">
+            <div class="card-heading"><div><h2>Where the spend sits</h2><p class="note">Top services &middot; click a name to filter</p></div><span class="note" data-report-currency>GBP</span></div>
+            <div id="service-chart"></div>
+          </article>
+          <article class="card">
+            <div class="card-heading"><div><h2>How it is priced</h2><p class="note" id="pricing-note">Recorded cost, not retail value</p></div></div>
+            <div id="pricing-chart"></div>
+            <p class="note" style="margin-top:16px">Reservation and savings-plan amounts are cost, not savings. Unused allocations stay in the totals.</p>
+          </article>
+        </div>
+        <div class="grid-2">
+          <article class="card">
+            <div class="card-heading"><div><h2>Portfolio split</h2><p class="note">Workbook Greenfield / Brownfield classification</p></div></div>
+            <div id="portfolio-chart"></div>
+          </article>
+          <article class="card">
+            <div class="card-heading"><div><h2>Billing-month coverage</h2><p class="note">Recorded amounts only; no missing month is filled with zero</p></div></div>
+            <div id="month-chart"></div>
+            <p class="note" id="history-note" style="margin-top:12px"></p>
+          </article>
+        </div>
+        <article class="card">
+          <div class="card-heading">
+            <div><h2>Explore the spend</h2><p class="note" id="table-caption"></p></div>
+            <div class="table-tools">
+              <label class="sr-only" for="table-dimension">Group spend by</label>
+              <select id="table-dimension"><option value="subscription">By subscription</option><option value="service">By service</option><option value="region">By region</option><option value="pricing">By pricing model</option><option value="portfolio">By portfolio</option><option value="enrollment">By enrollment</option></select>
+              <label class="sr-only" for="table-sort">Sort spend</label>
+              <select id="table-sort"><option value="descending">Cost: high to low</option><option value="ascending">Cost: low to high</option><option value="name">Name: A to Z</option></select>
+              <button id="export-spend">Export filtered data CSV</button>
+            </div>
+          </div>
+          <div class="table-wrap"><table class="data-table"><thead><tr><th id="group-label" scope="col">Subscription</th><th class="num" scope="col">Cost (<span data-report-currency>GBP</span>)</th><th class="num" scope="col">Share of selected cost <span class="info" tabindex="0" title="Group signed cost divided by all selected signed cost. Not available when the denominator is zero." aria-label="Share definition">i</span></th><th class="num" scope="col">Source rows</th></tr></thead><tbody id="spend-table"></tbody></table></div>
+          <div class="pager no-print"><span class="note" id="spend-page-label"></span><div class="actions"><button id="spend-previous" aria-label="Previous spend page">Previous</button><button id="spend-next" aria-label="Next spend page">Next</button></div></div>
+          <p class="print-page-note" id="spend-print-note" hidden></p>
+        </article>
+      </section>
+
+      <section id="advisor-panel" aria-label="Advisor estimates" hidden>
+        <div class="banner"><div><strong>Estimates, not realized savings</strong><p>Recommendations can overlap. Do not treat their sum as a realizable saving or add annual estimates to monthly spend. Native totals include only source estimates in the selected currency. Other currencies and missing estimates remain visible but are excluded, not valued at zero.</p></div></div>
+        <div class="kpis" id="advisor-kpis"></div>
+        <article class="card">
+          <div class="card-heading"><div><h2>Recommendation evidence</h2><p class="note" id="advisor-caption"></p></div><button id="export-advisor" class="no-print">Export Advisor CSV</button></div>
+          <div class="table-wrap"><table class="data-table"><thead><tr><th scope="col">Recommendation / service</th><th scope="col">Enrollment / subscription</th><th scope="col">Impact / production</th><th class="num" scope="col">Annual estimate (<span data-report-currency>GBP</span>)</th><th scope="col">Source estimate / updated</th></tr></thead><tbody id="advisor-table"></tbody></table></div>
+          <div class="pager no-print"><span class="note" id="advisor-page-label"></span><div class="actions"><button id="advisor-previous" aria-label="Previous Advisor page">Previous</button><button id="advisor-next" aria-label="Next Advisor page">Next</button></div></div>
+          <p class="print-page-note" id="advisor-print-note" hidden></p>
+        </article>
+      </section>
+
+      <section id="quality-panel" aria-label="Data and definitions" hidden>
+        <div class="grid-2">
+          <article class="card"><div class="card-heading"><h2>What is and is not reportable</h2></div><ul id="quality-list" class="quality-list"></ul></article>
+          <article class="card"><h2>Source and handling</h2><dl class="source-grid" id="source-details"></dl></article>
+        </div>
+        <article class="card" style="margin-bottom:20px">
+          <div class="card-heading"><div><h2>Source reconciliation</h2><p class="note">Populated Cost GBP values, aggregated independently of workbook summary cells. Equality is verified to the penny, not against an Azure invoice.</p></div></div>
+          <div class="table-wrap"><table class="data-table"><thead><tr><th scope="col">Billing month / enrollment</th><th class="num" scope="col">Source (GBP)</th><th class="num" scope="col">Dashboard (GBP)</th><th scope="col">18-decimal normalization difference (GBP)</th></tr></thead><tbody id="reconciliation-table"></tbody></table></div>
+          <div id="excel-errors" class="note" style="margin-top:12px"></div>
+        </article>
+        <div class="grid-2">
+          <article class="card"><h2>Metric definitions</h2><div class="stack" id="definitions" style="margin-top:16px"></div></article>
+          <article class="card"><h2>Credit inputs, not consumption</h2><div id="credit-inputs" style="margin-top:16px"></div><p class="note" style="margin-top:16px">These are the workbook's &ldquo;Credits GBP&rdquo; inputs. This dashboard does not infer a drawn balance, remaining credits, MACC burn, fiscal year or forecast from them.</p></article>
+        </div>
+      </section>
+
+      <section class="card report-footer" aria-label="Report commentary">
+        <div class="card-heading"><div><h2>Make it report-ready</h2><p class="note">Add your commentary, then download a text briefing or print the current view to PDF. CSV exports include every filtered row, not just the visible table page.</p></div></div>
+        <label class="field no-print" for="report-notes">Commentary and next actions<textarea id="report-notes" placeholder="Add context, decisions, owners and next steps for this review. Notes remain in this tab only."></textarea></label>
+        <p class="notes-print" id="notes-print"></p>
+        <p class="note no-print">Notes are not saved automatically. Include them in a report before closing or refreshing this tab.</p>
+      </section>
+      <footer class="report-footnote" id="report-footnote"></footer>
+    </main>
+  </div>
+  <noscript><p>This dashboard needs JavaScript to calculate its local report. No data is sent anywhere.</p></noscript>
+  <script type="application/json" id="mbr-data">__MBR_DATA__</script>
+  <script type="application/json" id="report-host">__MBR_HOST__</script>
+  <script>__MBR_SCRIPT__</script>
+</body>
+</html>

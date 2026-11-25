@@ -1,0 +1,2 @@
+BillingAccountId,Date,Cost,BillingCurrency,ChargeType
+ACCT-9,2026-10-03,7.5,USD,Usage

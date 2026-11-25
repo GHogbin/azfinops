@@ -1,0 +1,10 @@
+﻿EnrollmentNumber,MeterId,MeterName,MeterType,MeterCategory,MeterSubCategory,ServiceFamily,Product,SkuID,ProductID,MeterRegion,UnitOfMeasure,PartNumber,EffectiveStartDate,EffectiveEndDate,UnitPrice,BasePrice,MarketPrice,CurrencyCode,IncludedQuantity,OfferId,Term,PriceType
+1000001,mtr-1,E2 v5,1 Compute Hour,Virtual Machines,Ev5 Series,Compute,VM E2,SKU1,P1,UK South,1 Hour,PN1,09/01/2026 00:00:00,10/01/2026 00:00:00,0.10,0.14,0.15,GBP,0,OFFER-A,,Consumption
+1000001,mtr-1,E2 v5,1 Compute Hour,Virtual Machines,Ev5 Series,Compute,VM E2,SKU1,P1,UK South,1 Hour,PN1,09/01/2026 00:00:00,10/01/2026 00:00:00,0.08,,0.0885,GBP,0,OFFER-A,P1Y,SavingsPlan
+1000001,mtr-1,E2 v5,1 Compute Hour,Virtual Machines,Ev5 Series,Compute,VM E2,SKU1,P1,UK South,1 Hour,PN1,09/01/2026 00:00:00,10/01/2026 00:00:00,0.06,,0.0665,GBP,0,OFFER-A,P3Y,SavingsPlan
+1000001,mtr-2,Hot LRS Data Stored,Data Stored (GB/Month),Storage,Blob,Storage,Blob Hot,SKU2,P2,,100 GB/Month,PN2,09/01/2026 00:00:00,10/01/2026 00:00:00,1.5,2,2.1,USD,0,OFFER-A,,Consumption
+1000001,mtr-3,D4 v3 Low Priority,1 Compute Hour,Virtual Machines,Dv3,Compute,VM D4 LP,SKU3,P3,NO West,1000 Hours,PN3,09/01/2026 00:00:00,10/01/2026 00:00:00,36.22,51.13,52.75,GBP,0,OFFER-A,,Consumption
+1000001,mtr-4,Free Meter,1 GB,Storage,Blob,Storage,Free,SKU4,P4,UK South,1 GB,PN4,09/01/2026 00:00:00,10/01/2026 00:00:00,0,,0,GBP,5,OFFER-A,,Consumption
+1000001,mtr-5,No Price,1 Hour,Virtual Machines,X,Compute,X,SKU5,P5,UK South,1 Hour,PN5,09/01/2026 00:00:00,10/01/2026 00:00:00,,,0.5,GBP,0,OFFER-A,,Consumption
+1000001,mtr-6,Bad Date,1 Hour,Virtual Machines,X,Compute,X,SKU6,P6,UK South,1 Hour,PN6,13/45/2026 00:00:00,10/01/2026 00:00:00,0.5,,0.5,GBP,0,OFFER-A,,Consumption
+1000001,,No Meter,1 Hour,Virtual Machines,X,Compute,X,SKU7,P7,UK South,1 Hour,PN7,09/01/2026 00:00:00,10/01/2026 00:00:00,0.5,,0.5,GBP,0,OFFER-A,,Consumption

@@ -1,0 +1,2 @@
+﻿EnrollmentNumber,MeterId,MeterName,MeterType,MeterCategory,MeterSubCategory,ServiceFamily,Product,SkuID,ProductID,MeterRegion,UnitOfMeasure,PartNumber,EffectiveStartDate,EffectiveEndDate,UnitPrice,BasePrice,MarketPrice,CurrencyCode,IncludedQuantity,OfferId,Term,PriceType
+1000001,mtr-1,E2 v5,1 Compute Hour,Virtual Machines,Ev5 Series,Compute,VM E2,SKU1,P1,UK South,1 Hour,PN1,08/01/2026 00:00:00,09/01/2026 00:00:00,0.09,0.14,0.15,GBP,0,OFFER-A,,Consumption

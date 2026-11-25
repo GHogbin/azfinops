@@ -1,0 +1,45 @@
+{
+  "actual": {
+    "USD": {
+      "total": "1199.00",
+      "by_charge_type": {
+        "Usage": "54.00",
+        "Purchase": "1200.00",
+        "Refund": "-50.00",
+        "Credit": "-5.00"
+      }
+    },
+    "GBP": {
+      "total": "100.00"
+    }
+  },
+  "amortized": {
+    "USD": {
+      "total": "62.00"
+    },
+    "GBP": {
+      "total": "100.00"
+    }
+  },
+  "reservation_utilization": "0.375",
+  "coverage_feb_usd": {
+    "covered": "12.00",
+    "eligible": "36.00",
+    "ratio": "0.3333333333"
+  },
+  "observed_discount_usd": {
+    "payg_equivalent": "12.00",
+    "gross": "9.00",
+    "unused": "5.00",
+    "net": "4.00"
+  },
+  "price_volume_m1_jan_to_feb_usd": {
+    "change": "13.00",
+    "volume": "10.00",
+    "price": "3.00"
+  },
+  "fx": {
+    "gbp_to_usd_rate": "1.25",
+    "gbp_100_in_usd": "125.00"
+  }
+}

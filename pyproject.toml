@@ -1,0 +1,52 @@
+[project]
+name = "azfinops"
+version = "0.1.0"
+description = "Local-first Azure FinOps dashboard (synthetic demo + CSV ingestion)"
+requires-python = ">=3.12"
+dependencies = [
+  "duckdb>=1.1",
+  "pyarrow>=17",
+  "numpy>=1.26",
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.30",
+  "pydantic>=2.8",
+  "pydantic-settings>=2.4",
+  "python-multipart>=0.0.9",
+]
+
+[dependency-groups]
+dev = ["pytest>=8", "httpx>=0.27", "ruff>=0.6", "mypy>=1.11", "pytest-timeout>=2.3"]
+
+[project.scripts]
+azfinops-generate = "azfinops.generator.__main__:main"
+azfinops-migrate = "azfinops.migrations.runner:main"
+azfinops-import = "azfinops.ingestion.__main__:main"
+azfinops-aggregate = "azfinops.aggregates:main"
+azfinops-report = "azfinops.report:main"
+azfinops-names = "azfinops.dimensions:main"
+azfinops-serve = "azfinops.api.server:main"
+azfinops-pricesheet = "azfinops.pricesheet:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/azfinops"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+timeout = 120
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.mypy]
+strict = true
+mypy_path = "src"
+
+[[tool.mypy.overrides]]
+module = ["pyarrow", "pyarrow.*"]
+ignore_missing_imports = true
