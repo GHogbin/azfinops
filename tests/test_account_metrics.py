@@ -71,3 +71,77 @@ def test_pay_models_replace_the_charge_type_filter_with_usage(con):
     pm = q.pay_models(con, q.Filters("amortized", "GBP", charge_types=("UnusedReservation",)))
     assert {(x["model"], int(x["cost"])) for x in pm["overall"]} == {("Reservation", 80), ("On Demand", 80)}
     assert {(x["account"], x["model"]) for x in pm["by_account"]} == {("acctG", "Reservation"), ("acctG", "On Demand")}
+
+
+@pytest.mark.parametrize("combined_view", [False, True])
+def test_overview_rollups_match_the_previous_individual_queries(con, combined_view):
+    if combined_view:
+        combined.install(con, "GBP", [{"month": "2026-09", "from": "USD", "to": "GBP", "rate": "0.8"}])
+    f = q.Filters("amortized", "GBP", combined=combined_view)
+    expected = {
+        "daily": q.series(con, f, "day"),
+        "monthly": q.series(con, f, "month"),
+        "daily_by_account": q.series_by_account(con, f, "day"),
+        "monthly_by_account": q.series_by_account(con, f, "month"),
+        "by_account_month": q.by_account_month(con, f),
+    }
+    result = q.overview(con, f, tops=())
+    assert {key: result[key] for key in expected} == expected
+
+
+@pytest.mark.parametrize("combined_view", [False, True])
+def test_compact_coverage_matches_raw_group_inputs(con, combined_view):
+    if combined_view:
+        combined.install(con, "GBP", [{"month": "2026-09", "from": "USD", "to": "GBP", "rate": "0.8"}])
+    f = q.Filters("amortized", "GBP", combined=combined_view)
+    w, p = f.where()
+    covered, uncovered, benefit = con.execute(f"""
+        WITH s AS (SELECT * FROM agg_daily WHERE {w}),
+        cats AS (SELECT DISTINCT meter_category FROM s
+                 WHERE charge_type = 'Usage' AND pricing_model IN ('Reservation', 'SavingsPlan'))
+        SELECT sum(payg_equivalent) FILTER (WHERE pricing_model IN ('Reservation', 'SavingsPlan')),
+               sum(payg_equivalent) FILTER (WHERE pricing_model = 'On Demand'),
+               sum(cost_with_payg) FILTER (WHERE pricing_model IN ('Reservation', 'SavingsPlan'))
+        FROM s WHERE charge_type = 'Usage' AND coalesce(publisher_type, '') <> 'Marketplace'
+          AND meter_category IN (SELECT meter_category FROM cats)""", p).fetchone()
+    result = q.commitments(con, f)
+    assert result["coverage"]["covered"] == covered
+    assert result["coverage"]["eligible"] == covered + uncovered
+    assert result["observed_discount"]["benefit_cost"] == benefit
+
+
+@pytest.mark.parametrize("combined_view", [False, True])
+def test_compact_overview_restores_source_and_preserves_charge_override(con, combined_view):
+    if combined_view:
+        combined.install(con, "GBP", [{"month": "2026-09", "from": "USD", "to": "GBP", "rate": "0.8"}])
+    f = q.Filters("amortized", "GBP", combined=combined_view, charge_types=("UnusedReservation",))
+    before = con.execute("SELECT * FROM agg_daily ORDER BY ALL").fetchall()
+    expected = {
+        "totals": q.totals(con, f), "by_account": q.by_account(con, f),
+        "pay_models": q.pay_models(con, f), "quality": q.quality(con, f),
+        "commitments": q.commitments(con, f),
+    }
+    result = q.overview(con, f, tops=())
+    assert {key: result[key] for key in expected} == expected
+    assert con.execute("SELECT * FROM agg_daily ORDER BY ALL").fetchall() == before
+
+
+def test_compact_overview_keeps_requested_application_names_and_active_filters(con):
+    f = q.Filters("amortized", "GBP", applications=("app1",))
+    before = q.top(con, f, "application")
+    result = q.overview(con, f, tops=("application",))
+    assert result["top"]["application"] == before
+    assert result["totals"]["total"] == q.totals(con, f)["total"]
+
+
+def test_compact_overview_restores_the_source_view_when_a_card_fails(con, monkeypatch):
+    combined.install(con, "GBP", [{"month": "2026-09", "from": "USD", "to": "GBP", "rate": "0.8"}])
+    before = con.execute("SELECT * FROM agg_daily ORDER BY ALL").fetchall()
+
+    def fail(*args, **kwargs):
+        raise RuntimeError("injected card failure")
+
+    monkeypatch.setattr(q, "_overview", fail)
+    with pytest.raises(RuntimeError, match="injected card failure"):
+        q.overview(con, q.Filters("amortized", "GBP", combined=True), tops=())
+    assert con.execute("SELECT * FROM agg_daily ORDER BY ALL").fetchall() == before

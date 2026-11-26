@@ -18,7 +18,7 @@ from fastapi.testclient import TestClient
 from azfinops.aggregates import rebuild
 from azfinops.api import db as dbmod
 from azfinops.api.app import create_app
-from azfinops.api.db import Database, Overloaded
+from azfinops.api.db import Database, Overloaded, Paused
 from azfinops.config import Settings
 from azfinops.dimensions import harvest_and_store
 from azfinops.ingestion.importer import import_files
@@ -74,6 +74,29 @@ def test_overview_reconciles_and_money_is_exact_strings(client):
     assert u["ratio_cost"] == pytest.approx(1.6 / 2.4, abs=1e-6)
     assert o["commitments"]["available"] is True
     assert o["quality"]["synthetic"] is False
+
+
+@pytest.mark.parametrize("path", ["/api/overview", "/api/overview/summary", "/api/cost/movers"])
+def test_overview_requests_do_not_preconvert_the_entire_selected_period(client, monkeypatch, path):
+    from azfinops import combined, fx
+
+    monkeypatch.setattr(fx, "load", lambda _data_dir: [
+        {"month": "2026-09", "from": "GBP", "to": "USD", "rate": "0.8"}])
+    install = combined.install
+    cached_rows = []
+
+    def observe(con, *args, **kwargs):
+        install(con, *args, **kwargs)
+        cached_rows.append(con.execute("SELECT count(*) FROM fx_daily_money").fetchone()[0])
+
+    monkeypatch.setattr(combined, "install", observe)
+    response = get(client, path, currency="USD", combined="true", start="2026-09-01", end="2026-09-30")
+    assert response.status_code == 200, response.text
+    assert cached_rows == [0]
+    if path == "/api/overview":
+        assert response.json()["totals"]["total"] == "13.0000"
+    elif path == "/api/overview/summary":
+        assert response.json()["total"] == "13.0000"
 
 
 def test_actual_basis_is_empty_and_commitments_unavailable(client):
@@ -234,28 +257,32 @@ def test_built_frontend_is_served_with_csp_and_api_still_wins(db_path, tmp_path)
         assert c.get("/api/health").status_code == 200
 
 
-def test_query_deadline_interrupts_and_maps_to_504(db_path, tmp_path):
+@pytest.mark.parametrize("heavy", [False, True])
+def test_query_deadline_interrupts_and_maps_to_504(db_path, tmp_path, heavy):
     app = create_app(Settings(data_dir=db_path.parent, query_timeout_s=1), db_path,
                      allowed_hosts=("testserver",), web_dir=tmp_path / "no-web")
 
     @app.get("/slow")
     def slow():
-        with app.state.db.cursor() as con:
+        with app.state.db.cursor(heavy=heavy) as con:
             con.execute("SELECT count(*) FROM range(100000000000) a, range(1000) b").fetchall()
 
     with TestClient(app) as c:
         r = c.get("/slow")
         assert r.status_code == 504 and "exceeded" in r.json()["error"]
         assert c.get("/api/health").status_code == 200            # server is still healthy afterwards
+        with app.state.db.cursor(heavy=heavy) as con:
+            assert con.execute("SELECT 1").fetchone()[0] == 1
 
 
-def test_concurrency_gate_rejects_instead_of_queueing_forever(db_path, monkeypatch):
+@pytest.mark.parametrize("heavy", [False, True])
+def test_concurrency_gate_rejects_instead_of_queueing_forever(db_path, monkeypatch, heavy):
     monkeypatch.setattr(dbmod, "GATE_WAIT_S", 0.2)
-    d = Database(db_path, Settings(data_dir=db_path.parent, max_concurrent_queries=1))
+    d = Database(db_path, Settings(data_dir=db_path.parent, max_concurrent_queries=2 if heavy else 1))
     held, release = threading.Event(), threading.Event()
 
     def hold():
-        with d.cursor():
+        with d.cursor(heavy=heavy):
             held.set()
             release.wait(5)
 
@@ -263,11 +290,69 @@ def test_concurrency_gate_rejects_instead_of_queueing_forever(db_path, monkeypat
     t.start()
     try:
         assert held.wait(5)
-        with pytest.raises(Overloaded), d.cursor():
+        with pytest.raises(Overloaded), d.cursor(heavy=heavy):
             pass
     finally:
         release.set()
         t.join()
+        d.close()
+
+
+@pytest.mark.parametrize("path", ["/api/overview", "/api/overview/summary", "/api/fx/combined", "/api/data/quality"])
+def test_portfolio_scans_wait_without_blocking_light_requests(client, monkeypatch, path):
+    from concurrent.futures import ThreadPoolExecutor
+
+    d = client.app.state.db
+    waiting = threading.Event()
+    acquire = d._heavy_gate.acquire
+
+    def observe(*args, **kwargs):
+        waiting.set()
+        return acquire(*args, **kwargs)
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        with d.cursor(heavy=True):
+            monkeypatch.setattr(d._heavy_gate, "acquire", observe)
+            pending = pool.submit(get, client, path)
+            assert waiting.wait(5)
+            assert not pending.done()
+            assert client.get("/api/health").status_code == 200
+        response = pending.result(timeout=5)
+    assert response.status_code == 200
+    data = response.json()
+    if path.startswith("/api/overview"):
+        assert (data["totals"]["total"] if path == "/api/overview" else data["total"]) == "16.2500"
+
+
+def test_queued_heavy_request_observes_import_pause_and_releases_its_gate(db_path, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+
+    d = Database(db_path, Settings(data_dir=db_path.parent))
+    waiting = threading.Event()
+    acquire = d._heavy_gate.acquire
+
+    def observe(*args, **kwargs):
+        waiting.set()
+        return acquire(*args, **kwargs)
+
+    def query():
+        with d.cursor(heavy=True) as con:
+            return con.execute("SELECT 1").fetchone()[0]
+
+    try:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            with d.cursor(heavy=True):
+                monkeypatch.setattr(d._heavy_gate, "acquire", observe)
+                pending = pool.submit(query)
+                assert waiting.wait(5)
+                pausing = pool.submit(d.pause)
+                assert d._paused.wait(5)
+            with pytest.raises(Paused):
+                pending.result(timeout=5)
+            pausing.result(timeout=5)
+        d.resume()
+        assert query() == 1
+    finally:
         d.close()
 
 

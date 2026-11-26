@@ -137,7 +137,7 @@ def overview(f: F, db: Db, top_n: Annotated[int, Query(ge=1, le=50)] = 10,
     wanted = tuple(t for t in tops.split(",") if t)
     if any(t not in q.OVERVIEW_TOPS for t in wanted):
         raise HTTPException(422, f"tops must be among {', '.join(q.OVERVIEW_TOPS)}")
-    with db.cursor(f=f) as con:
+    with db.cursor(f=f, cache_daily_money=False, heavy=True) as con:
         o = q.overview(con, f, top_n, wanted)
         for t in o["top"].values():
             _label_top(con, t)
@@ -192,7 +192,7 @@ def cost_flow(f: F, db: Db, request: Request,
 @router.get("/overview/summary", response_model=s.Summary)
 def overview_summary(f: F, db: Db) -> dict[str, Any]:
     """The Overview's headline strip, over all dates with data (the period does not apply)."""
-    with db.cursor(f=f) as con:
+    with db.cursor(f=f, cache_daily_money=False, heavy=True) as con:
         return q.summary(con, f)
 
 
@@ -267,7 +267,7 @@ def cost_movers(f: F, db: Db, request: Request,
                 n: Annotated[int, Query(ge=1, le=20)] = 5) -> dict[str, Any]:
     if dimension not in q.DIMENSIONS:
         raise HTTPException(422, f"unknown dimension {dimension!r}")
-    with db.cursor(f=f) as con:
+    with db.cursor(f=f, cache_daily_money=False) as con:
         r = q.movers(con, f, dimension, n)
         rows = r["increases"] + r["decreases"]
         if dimension == "subscription":
@@ -395,7 +395,7 @@ def data_imports(db: Db, limit: Annotated[int, Query(ge=1, le=200)] = 50) -> dic
 @router.get("/data/quality", response_model=s.DataQuality)
 def data_quality(db: Db, full: bool = False) -> dict[str, Any]:
     """Fast integrity checks by default; raw fact reconciliation runs only on explicit request."""
-    with db.cursor(require_current=False) as con:
+    with db.cursor(require_current=False, heavy=True) as con:
         return dm.quality_checks(con, full=full)
 
 
@@ -436,7 +436,7 @@ def fx_combined(request: Request, db: Db, cost_kind: Annotated[str, Query(patter
                 currency: Annotated[str, Query(pattern=r"^[A-Za-z]{3}$")] = "GBP") -> dict[str, Any]:
     """Which months and currencies are converted, at what rate, and which are missing a rate."""
     from .. import combined
-    with db.cursor() as con:
+    with db.cursor(heavy=True) as con:
         return combined.summary(con, cost_kind, currency.upper(), fx.load(request.app.state.settings.data_dir),
                                 q.Filters(cost_kind, currency.upper(), combined=True))
 

@@ -36,7 +36,7 @@ class Settings:
     threads: int = 2
     query_timeout_s: int = 30
     max_upload_mb: int = 512
-    max_concurrent_queries: int = 4
+    max_concurrent_queries: int = 2
     import_dirs: tuple[Path, ...] = ()
     # Tag keys (exact, case-sensitive, first non-empty wins) used for attribution.
     # Application ids are lower-cased at aggregation. ApplicationID is a fallback seen on rows that
@@ -71,7 +71,7 @@ class Settings:
             threads=int(e.get("AZFINOPS_THREADS", "2")),
             query_timeout_s=int(e.get("AZFINOPS_QUERY_TIMEOUT_S", "30")),
             max_upload_mb=int(e.get("AZFINOPS_MAX_UPLOAD_MB", "512")),
-            max_concurrent_queries=int(e.get("AZFINOPS_MAX_CONCURRENT_QUERIES", "4")),
+            max_concurrent_queries=int(e.get("AZFINOPS_MAX_CONCURRENT_QUERIES", "2")),
             import_dirs=tuple(Path(p) for p in e.get("AZFINOPS_IMPORT_DIRS", "").split(os.pathsep) if p),
             app_tag_keys=_tag_keys(e.get("AZFINOPS_APP_TAG_KEYS"), ("mnd-applicationid", "ApplicationID")),
             env_tag_keys=_tag_keys(e.get("AZFINOPS_ENV_TAG_KEYS"), ("mnd-envtype",)),

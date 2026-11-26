@@ -7,6 +7,8 @@ currencies can never be summed. Rankings are computed over all groups before any
 from __future__ import annotations
 
 import re
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from datetime import date, timedelta
 from decimal import Decimal
@@ -160,7 +162,11 @@ def commitments(con: DuckDBPyConnection, f: Filters) -> dict[str, Any]:
     cost_total = used_cost + unused_res_cost
     util_cost = None if cost_total == 0 else used_cost / cost_total
     covered, uncovered, missing, contract, gross_cost = con.execute(f"""
-        WITH s AS (SELECT * FROM agg_daily WHERE {w}),
+        WITH s AS (
+          SELECT meter_category, charge_type, pricing_model, publisher_type,
+                 sum(payg_equivalent) AS payg_equivalent, sum(cost_with_payg) AS cost_with_payg,
+                 sum(payg_missing_rows) AS payg_missing_rows, sum(contract_basis_rows) AS contract_basis_rows
+          FROM agg_daily WHERE {w} GROUP BY 1, 2, 3, 4),
         cats AS (SELECT DISTINCT meter_category FROM s
                  WHERE charge_type = 'Usage' AND pricing_model IN ('Reservation','SavingsPlan'))
         SELECT sum(payg_equivalent) FILTER (WHERE pricing_model IN ('Reservation','SavingsPlan')),
@@ -811,7 +817,10 @@ def _account_metrics(con: DuckDBPyConnection, f: Filters) -> dict[tuple[str, str
     cov: dict[tuple[str, str], tuple[Decimal, Decimal, Decimal]] = {}
     if f.cost_kind == "amortized":
         for acct, ccy, covered, uncovered, benefit_cost in con.execute(f"""
-            WITH s AS (SELECT * FROM agg_daily WHERE {w}),
+            WITH s AS (
+              SELECT billing_account_id, billing_currency, meter_category, charge_type, pricing_model, publisher_type,
+                     sum(payg_equivalent) AS payg_equivalent, sum(cost_with_payg) AS cost_with_payg
+              FROM agg_daily WHERE {w} GROUP BY 1, 2, 3, 4, 5, 6),
             cats AS (SELECT DISTINCT billing_account_id AS a, billing_currency AS c, meter_category AS m FROM s
                      WHERE charge_type = 'Usage' AND pricing_model IN ('Reservation','SavingsPlan'))
             SELECT s.billing_account_id, s.billing_currency,
@@ -1060,8 +1069,8 @@ def summary(con: DuckDBPyConnection, f: Filters) -> dict[str, Any]:
         return {"available": False, "reason": "No cost for these filters.", "definition": SUMMARY_DEFINITION}
     total, rows, first, last, subs = _d(head[0]), int(head[1] or 0), head[2], head[3], int(head[4] or 0)
     rw, rp, _ign = _resource_where(g)
-    resource_source, rw = _summary_native_source(con, g, "agg_resource_month", rw)
-    resources = con.execute(f"SELECT count(DISTINCT resource_id) FROM {resource_source} WHERE {rw} "
+    # This projection reads native IDs without evaluating the view's converted money column.
+    resources = con.execute(f"SELECT count(DISTINCT resource_id) FROM agg_resource_month WHERE {rw} "
                             "AND resource_id IS NOT NULL", rp).fetchall()[0][0]
     month_days: dict[date, int] = {}
     month_cost: dict[date, Decimal] = {}
@@ -1305,9 +1314,72 @@ def resource_changes(con: DuckDBPyConnection, f: Filters, n: int = 200) -> dict[
 OVERVIEW_TOPS = ("subscription", "service", "resource_group", "application")
 
 
+@contextmanager
+def _overview_scope(con: DuckDBPyConnection, f: Filters, tops: tuple[str, ...]) -> Iterator[None]:
+    """Reuse a compact request-local rollup instead of scanning source dimensions for every card."""
+    columns = {"usage_date", "usage_month", "cost_kind", "billing_account_id", "billing_currency",
+               "meter_category", "charge_type", "pricing_model", "publisher_type", "application"}
+    columns.update(DIMENSIONS[dimension] for dimension in tops)
+    columns.update(column for attr, column in _FIELDS.items() if getattr(f, attr))
+    expressions = [column if column != "application" or "application" in tops or f.applications else
+                   "CASE WHEN application NOT IN ('(unattributed)', '(untagged)') "
+                   "THEN '(attributed)' ELSE application END AS application" for column in sorted(columns)]
+    w, p = f.where(exclude=("charge_types",))
+    if not f.combined:
+        w, p = w.replace("billing_currency = ?", "1 = 1", 1), [p[0], *p[2:]]
+    previous = con.execute(
+        "SELECT sql FROM duckdb_views() WHERE view_name = 'agg_daily' AND temporary").fetchall()
+    con.execute(
+        "CREATE OR REPLACE TEMP TABLE overview_rows AS SELECT "
+        + ", ".join(expressions) +
+        ", sum(cost) AS cost, sum(payg_equivalent) AS payg_equivalent, "
+        "sum(cost_with_payg) AS cost_with_payg, sum(payg_missing_rows) AS payg_missing_rows, "
+        "sum(contract_basis_rows) AS contract_basis_rows, sum(quantity_hours) AS quantity_hours, "
+        "sum(row_count) AS row_count, bool_or(is_synthetic) AS is_synthetic "
+        f"FROM agg_daily WHERE {w} GROUP BY ALL", p)
+    try:
+        con.execute("CREATE OR REPLACE TEMP VIEW agg_daily AS SELECT * FROM overview_rows")
+        yield
+    finally:
+        con.execute("DROP VIEW IF EXISTS temp.main.agg_daily")
+        if previous:
+            con.execute(previous[0][0])
+        con.execute("DROP TABLE overview_rows")
+
+
+def _rollup_series(points: list[dict[str, Any]], *, monthly: bool = False,
+                   by_account: bool = False) -> list[dict[str, Any]]:
+    cells: dict[tuple[date, str], tuple[list[Decimal], list[Decimal]]] = {}
+    for point in points:
+        period = point["period"].replace(day=1) if monthly else point["period"]
+        key = (period, point["account"] if by_account else "")
+        costs, usage = cells.setdefault(key, ([], []))
+        costs.append(point["total"])
+        usage.append(point["usage"])
+    return [{"period": period, **({"account": account} if by_account else {"complete": None}),
+             "total": sum_decimal(costs), "usage": sum_decimal(usage)}
+            for (period, account), (costs, usage) in sorted(cells.items())]
+
+
 def overview(con: DuckDBPyConnection, f: Filters, top_n: int = 10, tops: tuple[str, ...] = OVERVIEW_TOPS) -> dict[str, Any]:
-    return {"totals": totals(con, f), "by_account": by_account(con, f), "by_account_month": by_account_month(con, f), "daily": series(con, f, "day"), "monthly": series(con, f, "month"),
-            "daily_by_account": series_by_account(con, f, "day"), "monthly_by_account": series_by_account(con, f, "month"),
+    with _overview_scope(con, f, tops):
+        return _overview(con, f, top_n, tops)
+
+
+def _overview(con: DuckDBPyConnection, f: Filters, top_n: int, tops: tuple[str, ...]) -> dict[str, Any]:
+    account_daily = series_by_account(con, f, "day")
+    daily = _rollup_series(account_daily)
+    monthly = _rollup_series(account_daily, monthly=True)
+    account_monthly = _rollup_series(account_daily, monthly=True, by_account=True)
+    qual = quality(con, f)
+    complete = {m["month"]: m["complete"] for m in qual["months"]}
+    for point in monthly:
+        point["complete"] = complete.get(point["period"])
+    native_monthly = [{"account": p["account"], "currency": f.currency, "month": p["period"], "cost": p["total"]}
+                      for p in sorted(account_monthly, key=lambda p: (p["account"], p["period"]))] if f.combined else by_account_month(con, f)
+    return {"totals": totals(con, f), "by_account": by_account(con, f), "by_account_month": native_monthly,
+            "daily": daily, "monthly": monthly,
+            "daily_by_account": account_daily, "monthly_by_account": account_monthly,
             "top": {d: top(con, f, d, top_n) for d in tops},
             "pay_models": pay_models(con, f),
-            "commitments": commitments(con, f), "quality": quality(con, f)}
+            "commitments": commitments(con, f), "quality": qual}

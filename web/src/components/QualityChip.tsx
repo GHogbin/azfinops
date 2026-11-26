@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getJson } from "../api";
+import { useApi } from "../hooks";
 
 interface Checks { checks: { id: string; title: string; status: string }[] }
 
@@ -11,20 +11,18 @@ let cache: { at: number; data: Checks } | null = null;
  * The checks run once, a moment after the page has loaded, and the result is kept for 10 minutes.
  */
 export function QualityChip({ onOpen }: { onOpen: () => void }) {
-  const [data, setData] = useState<Checks | null>(cache && Date.now() - cache.at < KEEP_MS ? cache.data : null);
-  const [error, setError] = useState<string | null>(null);
+  const [cached] = useState<Checks | null>(() => cache && Date.now() - cache.at < KEEP_MS ? cache.data : null);
+  const [ready, setReady] = useState(false);
+  const { data: loaded, error } = useApi<Checks>(!cached && ready ? "/api/data/quality" : null, null);
+  const data = cached ?? loaded;
   useEffect(() => {
-    if (data) return;
-    const c = new AbortController();
-    const t = window.setTimeout(() => {
-      getJson<Checks>("/api/data/quality", null, c.signal)
-        .then((r) => { cache = { at: Date.now(), data: r.data }; setData(r.data); })
-        .catch((e: unknown) => {
-          if (!c.signal.aborted) setError(e instanceof Error ? e.message : String(e));
-        });
-    }, 1500);
-    return () => { window.clearTimeout(t); c.abort(); };
-  }, [data]);
+    if (cached) return;
+    const t = window.setTimeout(() => setReady(true), 1500);
+    return () => window.clearTimeout(t);
+  }, [cached]);
+  useEffect(() => {
+    if (loaded) cache = { at: Date.now(), data: loaded };
+  }, [loaded]);
   if (error) return <button type="button" className="chip-pill q-chip q-warn" onClick={onOpen} title={error}>
     Data checks unavailable
   </button>;

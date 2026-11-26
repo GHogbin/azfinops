@@ -20,6 +20,9 @@ commitments, optimization, pricing, data management and an in-app knowledge guid
 - Successful cost imports retain one shared latest-12-calendar-month window across the portfolio.
 - Failed post-commit aggregate rebuilds block stale analysis until recovery.
 - Fast integrity checks run automatically; full reconciliation is explicitly requested.
+- Portfolio-wide Overview, summary, FX and quality scans queue one at a time while smaller requests
+  remain concurrent. The default execution deadline is 30 seconds; bounded queue waits and busy retries
+  can make complete page loads take longer.
 - Savings-plan figures are ceilings, not hourly purchase recommendations.
 
 ### Setup
@@ -102,6 +105,11 @@ Local deployment notes and account-specific diagnostics are intentionally exclud
 exports and financial workbooks must stay in approved local storage and must never be committed here.
 
 ## Verification
+
+Query-scheduling checks on Windows (2026-11-26): 474 Python tests and 48 frontend tests passed,
+along with Ruff, strict backend mypy, TypeScript and the Vite production build. Repeated concurrent
+local requests and three complete browser refreshes passed, including busy-response recovery.
+Financial conversions remain exact per source row. No production database write or migration was needed.
 
 Sanitized release checks on Windows (2026-11-25): 453 Python tests, 48 frontend tests and 101 standalone
 reporting tests passed. Ruff, the main backend's strict mypy check, TypeScript and the Vite production build

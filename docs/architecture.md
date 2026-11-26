@@ -198,7 +198,14 @@ sequenceDiagram
   never pasted into SQL.
 - **Cursors.** Each request gets its own cursor from the shared read-only connection, a slot in a bounded gate, and a
   watchdog that interrupts it after `AZFINOPS_QUERY_TIMEOUT_S`. A full gate answers 503 rather than queueing without
-  limit.
+  limit. The default is two concurrent queries for the default two-thread/2 GB database budget. Queue waiting
+  is bounded separately; the execution deadline remains 30 seconds. Overview, all-dates summary, the
+  portfolio FX summary and data-quality scans share a separate single-request gate so they do not compete
+  with each other. A heavy request acquires that gate before an overall slot, leaving capacity for lighter
+  requests while it waits. Both gates share the same 25-second queue budget; the browser retries a busy
+  503 using its existing bounded retry policy. Quality checks still use metadata/aggregates unless
+  the user explicitly requests full raw-fact reconciliation.
+  Import pause and aggregate recovery are checked again after queueing, before opening a cursor.
 - **The Combined view.** For one request, `combined.install` creates TEMP views with the same names as the two
   aggregate tables. The queries run unchanged, but every money column of a foreign-currency row is multiplied by the
   saved rate for its month. A currency with no rate at all is left out and named in the response.
@@ -206,13 +213,25 @@ sequenceDiagram
   vectorized Arrow decimal256 function, then rescaled half-even to 18 places. NumPy is required by DuckDB's
   Arrow-function bridge; monetary arithmetic does not use NumPy floats. Rate discovery reads the small scoped
   metadata table, retaining all months for comparisons and the all-dates summary. Selected foreign daily money
-  columns are cached per request; other dates still use the same exact converter. Resource-month conversion
-  remains lazy. TEMP data and functions do not persist in the database file.
+  columns are cached per request where repeated scans reuse them; other dates still use the same exact converter.
+  Overview, summary and movers skip that eager cache: Overview already materializes its compact rollup,
+  summary reads cost once, and movers only converts the two compared months. Their conversions still round
+  each source row before summing. Resource-month conversion remains lazy. TEMP data and functions do not
+  persist in the database file.
+- **Overview reuse.** Native-currency rows bypass FX joins; foreign cache preparation respects active filters.
+  The Overview builds one compact, request-local rollup of the required dimensions after exact conversion.
+  When application names are not requested or filtered, only their attribution classification is retained
+  in that temporary rollup. Cards share it, and chart series are derived from one daily enrollment series.
+  The original view is restored afterward. Charge-type overrides on usage cards and per-enrollment native
+  totals keep their existing semantics. Coverage operates on compact grouped inputs, not a materialized
+  copy of every original dimension.
 - **Responses.** Every route has a Pydantic response model (`schemas.py`), which is the contract between server and
   browser. Money is serialised as a string to keep it exact. Each derived figure carries a `definition`.
 - **Quality checks.** `/api/data/quality` runs fast metadata/aggregate checks by default. `?full=true` explicitly
   enables raw fact-to-daily and daily-to-resource reconciliation; neither is labelled passed when skipped.
   The header uses only fast checks, and failed checks remain visible. Both modes retain the normal deadline.
+  The header reuses `useApi` for bounded busy retries while preserving its delayed start and ten-minute
+  successful-result cache; import responses and exhausted retries remain visible as unavailable.
 - **Summary scans.** The all-dates strip derives cost, days and top services from one day/service rollup, preserving
   row-level exact conversion. Distinct resource/subscription counts read native IDs directly, applying the same
   saved-rate availability predicate without materialising converted money. Counts still exclude currencies with
@@ -303,7 +322,7 @@ All settings come from environment variables, read once by `Settings.from_env()`
 | `AZFINOPS_HOST`, `AZFINOPS_PORT` | `127.0.0.1`, `8765` | Where the server listens |
 | `AZFINOPS_WEB_DIR` | `web/dist` | The built front end to serve |
 | `AZFINOPS_MEMORY_LIMIT`, `AZFINOPS_THREADS` | `2GB`, `2` | DuckDB resources |
-| `AZFINOPS_QUERY_TIMEOUT_S`, `AZFINOPS_MAX_CONCURRENT_QUERIES` | `30`, `4` | Request limits |
+| `AZFINOPS_QUERY_TIMEOUT_S`, `AZFINOPS_MAX_CONCURRENT_QUERIES` | `30`, `2` | Execution deadline and concurrent-query cap; waiting is separately bounded |
 | `AZFINOPS_IMPORT_DIRS` | `<data dir>\imports` and the project's `samples` | Folders the dashboard may import from |
 | `AZFINOPS_MAX_UPLOAD_MB` | `512` | Upload size limit |
 | `AZFINOPS_APP_TAG_KEYS` | `mnd-applicationid,ApplicationID` | Tags that give a row its application |

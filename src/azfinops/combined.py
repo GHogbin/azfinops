@@ -48,7 +48,8 @@ def register_decimal_conversion(con: Any) -> None:
 
 
 def _prepare(con: Any, target: str, rates: list[dict[str, Any]],
-             f: Filters | None = None) -> tuple[str, dict[tuple[str, str], dict[str, Any]]]:
+             f: Filters | None = None, *,
+             cache_daily_money: bool = True) -> tuple[str, dict[tuple[str, str], dict[str, Any]]]:
     if not _CCY.match(target):
         raise ValueError("target currency must be a 3-letter ISO code")
     cat = str(con.execute("SELECT current_database()").fetchall()[0][0]).replace('"', '""')
@@ -78,42 +79,39 @@ def _prepare(con: Any, target: str, rates: list[dict[str, Any]],
     con.execute("CREATE OR REPLACE TEMP TABLE fx_daily_money "
                 "(row_id BIGINT, cost DECIMAL(38,18), payg_equivalent DECIMAL(38,18), "
                 "cost_with_payg DECIMAL(38,18))")
-    if f is not None and (f.start or f.end):
-        bounds = [*clauses, "d.billing_currency <> ?"]
-        values = [*params, target]
-        if f.start:
-            bounds.append("d.usage_date >= ?")
-            values.append(f.start)
-        if f.end:
-            bounds.append("d.usage_date <= ?")
-            values.append(f.end)
+    if cache_daily_money and f is not None and (f.start or f.end):
+        bounds, values = f.where()
+        bounds = bounds.replace("billing_currency = ?", "billing_currency <> ?", 1)
         con.execute(
             "INSERT INTO fx_daily_money SELECT d.rowid, azfinops_fx_money(d.cost, x.rate), "
             "azfinops_fx_money(d.payg_equivalent, x.rate), azfinops_fx_money(d.cost_with_payg, x.rate) "
             f"FROM {src}.agg_daily d JOIN fx_rate x "
             "ON x.from_ccy = d.billing_currency AND x.usage_month = d.usage_month "
-            f"WHERE {' AND '.join(bounds)}", values)
+            f"WHERE {bounds}", values)
     return src, use
 
 
-def install(con: Any, target: str, rates: list[dict[str, Any]], f: Filters | None = None) -> None:
-    src, _ = _prepare(con, target, rates, f)
+def install(con: Any, target: str, rates: list[dict[str, Any]], f: Filters | None = None, *,
+            cache_daily_money: bool = True) -> None:
+    src, _ = _prepare(con, target, rates, f, cache_daily_money=cache_daily_money)
 
     def conv(col: str, cached: bool = False) -> str:
         cache = f"WHEN c.row_id IS NOT NULL THEN c.{col} " if cached else ""
         return (f"CASE WHEN d.billing_currency = '{target}' THEN d.{col} "
                 f"{cache}ELSE azfinops_fx_money(d.{col}, x.rate) END AS {col}")
 
-    join = (f"FROM {src}.%s d LEFT JOIN fx_rate x ON x.from_ccy = d.billing_currency AND x.usage_month = d.usage_month "
-            f"WHERE d.billing_currency = '{target}' OR x.rate IS NOT NULL")
     con.execute(f"CREATE OR REPLACE TEMP VIEW agg_daily AS SELECT d.* REPLACE ('{target}' AS billing_currency, "
                 f"{conv('cost', True)}, {conv('payg_equivalent', True)}, {conv('cost_with_payg', True)}) "
                 f"FROM {src}.agg_daily d LEFT JOIN fx_rate x "
                 "ON x.from_ccy = d.billing_currency AND x.usage_month = d.usage_month "
                 "LEFT JOIN fx_daily_money c ON c.row_id = d.rowid "
-                f"WHERE d.billing_currency = '{target}' OR x.rate IS NOT NULL")
+                f"WHERE d.billing_currency <> '{target}' AND x.rate IS NOT NULL "
+                f"UNION ALL SELECT * FROM {src}.agg_daily WHERE billing_currency = '{target}'")
     con.execute(f"CREATE OR REPLACE TEMP VIEW agg_resource_month AS SELECT d.* REPLACE ('{target}' AS billing_currency, "
-                f"{conv('cost')}) " + join % "agg_resource_month")
+                f"{conv('cost')}) FROM {src}.agg_resource_month d JOIN fx_rate x "
+                "ON x.from_ccy = d.billing_currency AND x.usage_month = d.usage_month "
+                f"WHERE d.billing_currency <> '{target}' "
+                f"UNION ALL SELECT * FROM {src}.agg_resource_month WHERE billing_currency = '{target}'")
 
 
 def summary(con: Any, cost_kind: str, target: str, rates: list[dict[str, Any]],

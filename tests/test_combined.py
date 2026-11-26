@@ -174,7 +174,8 @@ def test_rates_with_unrepresentable_precision_are_rejected(tmp_path):
         fx.save(tmp_path, "2026-09", "USD", "GBP", "0.8000000000000000001", "manual", "test")
 
 
-def test_scoped_rate_setup_preserves_previous_month_and_all_dates_queries(con):
+@pytest.mark.parametrize("cache_daily_money", [False, True])
+def test_scoped_rate_setup_preserves_previous_month_and_all_dates_queries(con, cache_daily_money):
     from dataclasses import replace
 
     from azfinops.aggregates import _build_scope_freshness
@@ -182,9 +183,48 @@ def test_scoped_rate_setup_preserves_previous_month_and_all_dates_queries(con):
     for month in (date(2026, 8, 1), date(2026, 9, 1)):
         _build_scope_freshness(con, month)
     f = q.Filters("amortized", "GBP", start=date(2026, 9, 1), end=date(2026, 9, 30), combined=True)
-    combined.install(con, "GBP", RATES, f)
+    combined.install(con, "GBP", RATES, f, cache_daily_money=cache_daily_money)
+    assert con.execute("SELECT count(*) FROM fx_daily_money").fetchone()[0] == int(cache_daily_money)
     assert q.totals(con, f)["total"] == Decimal(260)
     assert q.totals(con, replace(f, start=None, end=None))["total"] == Decimal(300)
     assert q.totals(con, replace(f, start=date(2026, 8, 1), end=date(2026, 8, 31)))["total"] == Decimal(40)
     details = combined.summary(con, "amortized", "GBP", RATES, f)
     assert sum(r["converted"] for r in details["rows"]) == Decimal(300)
+
+
+def test_conversion_cache_respects_all_filters_without_excluding_cache_misses(con):
+    from dataclasses import replace
+
+    from azfinops.aggregates import _build_scope_freshness
+
+    for month in (date(2026, 8, 1), date(2026, 9, 1)):
+        _build_scope_freshness(con, month)
+    con.execute("UPDATE agg_daily SET application = 'excluded' WHERE usage_date = DATE '2026-09-06'")
+    f = q.Filters("amortized", "GBP", start=date(2026, 9, 1), end=date(2026, 9, 30),
+                  applications=("app",), combined=True)
+    combined.install(con, "GBP", RATES, f)
+    assert con.execute("SELECT count(*) FROM fx_daily_money").fetchone()[0] == 0
+    assert q.totals(con, f)["total"] == Decimal(100)
+    assert q.totals(con, replace(f, applications=()))["total"] == Decimal(260)
+
+
+def test_lazy_conversion_preserves_per_row_rounding_and_charge_overrides(con):
+    from azfinops.aggregates import _build_scope_freshness
+
+    con.execute("DELETE FROM agg_daily")
+    for charge_type, cost in (("Usage", "0.000000000000000003"), ("Usage", "0.000000000000000003"),
+                              ("Usage", "-0.000000000000000001"), ("UnusedReservation", "1.0000625")):
+        con.execute(f"INSERT INTO agg_daily ({COLS}) VALUES (DATE '2026-09-01', DATE '2026-09-01', "
+                    "'amortized', 'u', 'USD', ?, 'app', 'env', ?, ?, ?, 0, 0, 1, false)",
+                    [charge_type, *[Decimal(cost)] * 3])
+    _build_scope_freshness(con, date(2026, 9, 1))
+    f = q.Filters("amortized", "GBP", start=date(2026, 9, 1), end=date(2026, 9, 30),
+                  charge_types=("UnusedReservation",), combined=True)
+    rates = [{"month": "2026-09", "from": "USD", "to": "GBP", "rate": "0.5"}]
+    combined.install(con, "GBP", rates, f, cache_daily_money=False)
+    assert con.execute("SELECT count(*) FROM fx_daily_money").fetchone()[0] == 0
+    lazy = q.overview(con, f, tops=("application",))
+    assert lazy["totals"]["total"] == Decimal("0.50003125")
+    assert lazy["pay_models"]["overall"] == [{"model": None, "cost": Decimal("0.000000000000000004")}]
+    combined.install(con, "GBP", rates, f)
+    assert lazy == q.overview(con, f, tops=("application",))

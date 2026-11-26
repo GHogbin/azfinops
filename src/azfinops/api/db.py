@@ -5,6 +5,7 @@
   DuckDB allows one writer and no readers while it writes.
 * Each request gets its own cursor, a hard deadline (query_timeout_s) enforced with
   connection.interrupt(), and a slot in a bounded gate so a burst cannot exhaust memory.
+* Portfolio-wide scans share one heavy-query gate, acquired before an overall slot.
 * Time spent inside DuckDB is recorded per request for the Server-Timing header.
 """
 from __future__ import annotations
@@ -13,7 +14,7 @@ import logging
 import threading
 import time
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from contextvars import ContextVar
 from pathlib import Path
 from typing import Any
@@ -22,7 +23,7 @@ import duckdb
 
 from ..config import Settings
 
-# How long a request waits for one of the max_concurrent_queries slots before it is answered 503 "busy". Long enough
+# How long a request waits across both gates before it is answered 503 "busy". Long enough
 # for a screen that starts several heavy queries at once (Commitments: reservations, hourly cards, headroom per
 # currency) to queue rather than fail; the browser also retries a busy answer a few times.
 GATE_WAIT_S = 25.0
@@ -56,6 +57,7 @@ class Database:
         self._paused = threading.Event()
         self._open()
         self._gate = threading.BoundedSemaphore(settings.max_concurrent_queries)
+        self._heavy_gate = threading.BoundedSemaphore(1)
 
     def _open(self) -> None:
         self._root = duckdb.connect(str(self.path), read_only=True)
@@ -138,47 +140,55 @@ class Database:
 
     @contextmanager
     def cursor(self, timeout_s: float | None = None, f: Any = None, *,
-               require_current: bool = True) -> Iterator[duckdb.DuckDBPyConnection]:
+               require_current: bool = True, cache_daily_money: bool = True,
+               heavy: bool = False) -> Iterator[duckdb.DuckDBPyConnection]:
         if self._paused.is_set():
             raise Paused("an import is running; the dashboard is back when it finishes")
         if require_current and self.recovery_required:
             raise StaleAggregates(self.recovery_message)
-        if not self._gate.acquire(timeout=GATE_WAIT_S):
-            raise Overloaded("server is busy")
-        try:
+        deadline = time.monotonic() + GATE_WAIT_S
+        with ExitStack() as gates:
+            if heavy:
+                if not self._heavy_gate.acquire(timeout=GATE_WAIT_S):
+                    raise Overloaded("server is busy")
+                gates.callback(self._heavy_gate.release)
+                if self._paused.is_set():
+                    raise Paused("an import is running; the dashboard is back when it finishes")
+            if not self._gate.acquire(timeout=max(0.0, deadline - time.monotonic())):
+                raise Overloaded("server is busy")
+            gates.callback(self._gate.release)
+            if self._paused.is_set():
+                raise Paused("an import is running; the dashboard is back when it finishes")
+            if require_current and self.recovery_required:
+                raise StaleAggregates(self.recovery_message)
             cur = self._root.cursor()
-        except BaseException:
-            self._gate.release()
-            raise
-        timed_out = threading.Event()
+            timed_out = threading.Event()
 
-        def fire() -> None:
-            timed_out.set()
-            try:
-                cur.interrupt()
-            except duckdb.Error:
-                log.debug("deadline cursor already closed", exc_info=True)
+            def fire() -> None:
+                timed_out.set()
+                try:
+                    cur.interrupt()
+                except duckdb.Error:
+                    log.debug("deadline cursor already closed", exc_info=True)
 
-        limit = self.settings.query_timeout_s if timeout_s is None else min(timeout_s, self.settings.query_timeout_s)
-        timer = threading.Timer(limit, fire)
-        timer.daemon = True
-        timer.start()
-        t0 = time.perf_counter()
-        try:
-            if f is not None and getattr(f, "combined", False):
-                from .. import combined, fx
-                combined.install(cur, f.currency, fx.load(self.settings.data_dir), f)
-            yield cur
-        except duckdb.InterruptException as e:
-            if timed_out.is_set():
-                raise QueryTimeout(f"query exceeded {limit:g}s") from e
-            raise
-        finally:
-            timer.cancel()
-            sink = request_timings.get()
-            if sink is not None:
-                sink.append(("db", (time.perf_counter() - t0) * 1000))
+            limit = self.settings.query_timeout_s if timeout_s is None else min(timeout_s, self.settings.query_timeout_s)
+            timer = threading.Timer(limit, fire)
+            timer.daemon = True
+            timer.start()
+            t0 = time.perf_counter()
             try:
-                cur.close()
+                if f is not None and getattr(f, "combined", False):
+                    from .. import combined, fx
+                    combined.install(cur, f.currency, fx.load(self.settings.data_dir), f,
+                                     cache_daily_money=cache_daily_money)
+                yield cur
+            except duckdb.InterruptException as e:
+                if timed_out.is_set():
+                    raise QueryTimeout(f"query exceeded {limit:g}s") from e
+                raise
             finally:
-                self._gate.release()
+                timer.cancel()
+                sink = request_timings.get()
+                if sink is not None:
+                    sink.append(("db", (time.perf_counter() - t0) * 1000))
+                cur.close()
